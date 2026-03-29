@@ -1,0 +1,282 @@
+é simples, mas exatamente por isso que é escalavel ao extremo. Vamos ler: parsers.py: import requests, logging
+logger = logging.getLogger("ai-router")
+
+def _find_text_in_json(obj, max_depth=6):
+    if max_depth <= 0:
+        return None
+    if isinstance(obj, str) and obj.strip():
+        return obj.strip()
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key in ["text", "output", "generated_text", "result"] and isinstance(value, str):
+                return value.strip()
+            res = _find_text_in_json(value, max_depth-1)
+            if res:
+                return res
+    if isinstance(obj, list):
+        for item in obj:
+            res = _find_text_in_json(item, max_depth-1)
+            if res:
+                return res
+    return None
+
+def parse_google_ai_response(resp: requests.Response) -> str:
+    try:
+        data = resp.json()
+
+        # Caso padrão (Gemini)
+        if "candidates" in data and data["candidates"]:
+            cand = data["candidates"][0]
+            if "content" in cand:
+                parts = cand["content"].get("parts", [])
+                for p in parts:
+                    if isinstance(p, dict) and "text" in p:
+                        return p["text"].strip()
+
+        # Fallbacks (outros formatos/versões)
+        if "output" in data and isinstance(data["output"], str):
+            return data["output"].strip()
+        if "generatedText" in data and isinstance(data["generatedText"], str):
+            return data["generatedText"].strip()
+        if "promptFeedback" in data:
+            return f"[Blocked: {data['promptFeedback'].get('blockReason','unknown')}]"
+
+        # Busca texto em qualquer parte do JSON (último recurso)
+        text = _find_text_in_json(data)
+        if text:
+            return text.strip()
+
+        raise RuntimeError("Estrutura inesperada (Google AI).")
+
+    except Exception as e:
+        logger.warning(f"Erro parse Google: {e}")
+        return resp.text.strip()
+
+
+def _get_nested_value(obj, keys):
+    current = obj
+    for key in keys:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        elif isinstance(current, list) and isinstance(key, int) and key < len(current):
+            current = current[key]
+        else:
+            return None
+    return current if isinstance(current, str) else None
+
+def parse_json_text_response(resp: requests.Response) -> str:
+    try:
+        j = resp.json()
+        patterns = [
+            ("choices", 0, "message", "content"),
+            ("choices", 0, "text"),
+            ("generated_text",),
+            ("output",),
+            ("text",),
+            ("content",)
+        ]
+        for p in patterns:
+            result = _get_nested_value(j, p)
+            if result and result.strip():
+                return result.strip()
+        return str(j).strip()
+    except Exception:
+        return resp.text.strip() core.py: import os
+import time
+import threading
+import requests
+import logging
+from dataclasses import dataclass, field
+from typing import Callable, Optional, Dict, Any, List
+
+logger = logging.getLogger("ai-router")
+
+@dataclass
+class AIProvider:
+    name: str
+    api_key_env: str
+    endpoint: str
+    make_headers: Callable[[str], Dict[str, str]]
+    build_payload: Callable[[str, float], Dict[str, Any]]
+    parse_response: Callable[[requests.Response], str]
+    usage_limit: int = 100
+    window_seconds: int = 60
+    used_count: int = 0
+    window_start: float = field(default_factory=lambda: time.time())
+    exhausted_until: float = 0.0
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    model: str = "default"
+    timeout: int = 30
+
+    def has_key(self) -> bool:
+        return bool(os.getenv(self.api_key_env))
+
+    def reset_window_if_needed(self):
+        now = time.time()
+        if now - self.window_start >= self.window_seconds:
+            self.window_start = now
+            self.used_count = 0
+
+    def can_use(self) -> bool:
+        try:
+            with self.lock:
+                self.reset_window_if_needed()
+                
+                now = time.time()
+                if now < self.exhausted_until:
+                    return False
+                
+                return self.used_count < self.usage_limit
+                
+        except Exception:
+            return False
+
+    def mark_usage(self, count: int = 1):
+        with self.lock:
+            self.used_count += count
+            if self.used_count >= self.usage_limit:
+                self.exhausted_until = self.window_start + self.window_seconds
+
+    def force_exhaust(self, ttl_seconds: int):
+        with self.lock:
+            self.exhausted_until = time.time() + ttl_seconds
+
+    def send(self, prompt: str, temperature: float = 0.7) -> requests.Response:
+        key = os.getenv(self.api_key_env)
+        if not key:
+            raise RuntimeError(f"API key for {self.name} not found in env {self.api_key_env}")
+        headers = self.make_headers(key)
+        payload = self.build_payload(prompt, temperature)
+        return requests.post(self.endpoint, headers=headers, json=payload, timeout=self.timeout)
+
+class ProviderManager:
+    def __init__(self, providers: List[AIProvider]):
+        self.providers = [p for p in providers if p.has_key()]
+        if not self.providers:
+            raise RuntimeError("Nenhum provider configurado com chave de API.")
+        self.idx = 0
+        self.lock = threading.Lock()
+
+    def _next_index(self) -> int:
+        with self.lock:
+            i = self.idx
+            self.idx = (self.idx + 1) % len(self.providers)
+            return i
+
+    def get_available_provider(self) -> Optional[AIProvider]:
+        n = len(self.providers)
+        start = self._next_index()
+        
+        for offset in range(n):
+            i = (start + offset) % n
+            p = self.providers[i]
+            if p.can_use():
+                return p
+        
+        return None
+
+    def ask(self, prompt: str, temperature: float = 0.7) -> str:
+        for attempt in range(len(self.providers)):
+            p = self.get_available_provider()
+            
+            if not p:
+                break
+                
+            try:
+                resp = p.send(prompt, temperature)
+                
+                if 200 <= resp.status_code < 300:
+                    text = p.parse_response(resp)
+                    p.mark_usage(1)
+                    return text.strip()
+                
+                if resp.status_code == 429:
+                    p.force_exhaust(ttl_seconds=int(p.window_seconds / 2))
+                elif 400 <= resp.status_code < 600:
+                    p.force_exhaust(ttl_seconds=10)
+                    
+            except Exception:
+                p.force_exhaust(ttl_seconds=5)
+        
+        raise RuntimeError("Todos providers falharam.") builders: import os
+from typing import Dict, Any
+from xmlrpc import client
+
+def build_google_ai_studio(prompt: str, temperature: float = 0.7, model: str = "gemini-2.5-flash") -> Dict[str, Any]:
+    max_tokens = int(os.getenv("GOOGLE_MAX_OUTPUT_TOKENS", "8192"))
+    return {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens,
+            "topP": 0.95
+        }
+    }
+
+def build_openai_style(
+    prompt: str,
+    temperature: float = 0.7,
+    model: str = "gpt-4o-mini"
+) -> str:
+    max_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "1024"))
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "user", "content": prompt}
+        ],
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+
+    return response.choices[0].message.content
+router: import os, logging
+from dotenv import load_dotenv
+from typing import Optional
+from llms.ai_core import AIProvider, ProviderManager
+from llms.ai_builders import build_google_ai_studio, build_openai_style
+from llms.ai_parsers import parse_google_ai_response, parse_json_text_response
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("ai-router")
+
+load_dotenv()
+
+def make_providers():
+    providers = []
+    google_key = os.getenv("GOOGLE_API_KEY")
+    if not google_key:
+        raise RuntimeError("GOOGLE_API_KEY não definido")
+
+    google_endpoint = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={google_key}"
+    )
+
+    providers.append(AIProvider(
+        name="GoogleAIStudio",
+        api_key_env="GOOGLE_API_KEY",
+        endpoint=google_endpoint,
+        make_headers=lambda key: {
+            "Content-Type": "application/json"
+        },
+        build_payload=lambda prompt, temp: build_google_ai_studio(prompt, temp, "gemini-2.5-flash"),
+        parse_response=parse_google_ai_response,
+        usage_limit=int(os.getenv("GOOGLE_USAGE_LIMIT", "80")),
+        window_seconds=int(os.getenv("GOOGLE_WINDOW_S", "60")),
+        timeout=int(os.getenv("GOOGLE_TIMEOUT", "60")),
+        model="gemini-2.5-flash"
+    ))
+    return providers
+
+def create_ai_router() -> Optional[ProviderManager]:
+    try:
+        providers = make_providers()
+        if not providers:
+            logger.error("Nenhum provider configurado")
+            return None
+        return ProviderManager(providers)
+    except Exception as e:
+        logger.exception(f"Falha crítica ao inicializar AI Router: {e}")
+        return None
+
+ai_router = create_ai_router()
