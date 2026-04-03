@@ -1,6 +1,15 @@
+# parsers.py
+# ─────────────────────────────────────────────────────────────
+# Não precisa mexer aqui a menos que adicione um provider novo
+# com formato de resposta diferente de Google AI ou OpenAI-style
+# ─────────────────────────────────────────────────────────────
+
 import requests, logging
 logger = logging.getLogger("ai-router")
 
+
+# Fallback genérico — percorre o JSON em busca de qualquer texto útil
+# Usado quando o formato da resposta não bate com os padrões conhecidos
 def _find_text_in_json(obj, max_depth=6):
     if max_depth <= 0:
         return None
@@ -20,11 +29,13 @@ def _find_text_in_json(obj, max_depth=6):
                 return res
     return None
 
+
+# Parser para respostas da Google AI (Gemini)
+# Se adicionar outro modelo Google com estrutura diferente, ajuste aqui
 def parse_google_ai_response(resp: requests.Response) -> str:
     try:
         data = resp.json()
 
-        # Caso padrão (Gemini)
         if "candidates" in data and data["candidates"]:
             cand = data["candidates"][0]
             if "content" in cand:
@@ -33,17 +44,21 @@ def parse_google_ai_response(resp: requests.Response) -> str:
                     if isinstance(p, dict) and "text" in p:
                         return p["text"].strip()
 
-        # Fallbacks (outros formatos/versões)
         if "output" in data and isinstance(data["output"], str):
             return data["output"].strip()
+
         if "generatedText" in data and isinstance(data["generatedText"], str):
             return data["generatedText"].strip()
-        if "promptFeedback" in data:
-            return f"[Blocked: {data['promptFeedback'].get('blockReason','unknown')}]"
 
-        # Busca texto em qualquer parte do JSON (último recurso)
+        if "promptFeedback" in data:
+            reason = data['promptFeedback'].get('blockReason','unknown')
+            logger.warning(f"Resposta bloqueada pelo provider: {reason}")
+            return f"[Blocked: {reason}]"
+
+        # Último recurso: tenta achar qualquer string no JSON
         text = _find_text_in_json(data)
         if text:
+            logger.debug("Fallback parser acionado (_find_text_in_json)")
             return text.strip()
 
         raise RuntimeError("Estrutura inesperada (Google AI).")
@@ -64,9 +79,14 @@ def _get_nested_value(obj, keys):
             return None
     return current if isinstance(current, str) else None
 
+
+# Parser genérico para APIs estilo OpenAI (e compatíveis como Groq, Together, etc.)
+# Se o seu provider retorna um campo diferente, adicione o caminho em `patterns`
 def parse_json_text_response(resp: requests.Response) -> str:
     try:
         j = resp.json()
+
+        # ── adicione aqui novos padrões de resposta se necessário ──
         patterns = [
             ("choices", 0, "message", "content"),
             ("choices", 0, "text"),
@@ -75,10 +95,16 @@ def parse_json_text_response(resp: requests.Response) -> str:
             ("text",),
             ("content",)
         ]
+        # ────────────────────────────────────────────────────────────
+
         for p in patterns:
             result = _get_nested_value(j, p)
             if result and result.strip():
                 return result.strip()
+
+        logger.debug("Nenhum padrão conhecido encontrado no parser JSON")
         return str(j).strip()
-    except Exception:
+
+    except Exception as e:
+        logger.warning(f"Erro parse JSON genérico: {e}")
         return resp.text.strip()

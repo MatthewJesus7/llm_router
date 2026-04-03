@@ -1,9 +1,3 @@
-Perfeito — vou te entregar isso como **modelo estrutural completo da engine**, no nível que você consegue derivar doc, comentários e até expandir sem reabrir o código mentalmente.
-
-Sem marketing, sem simplificação indevida — só o sistema.
-
----
-
 # 0. Definição do sistema
 
 > Engine de execução resiliente para múltiplos providers heterogêneos, com convergência em saída textual e seleção baseada exclusivamente em estado operacional.
