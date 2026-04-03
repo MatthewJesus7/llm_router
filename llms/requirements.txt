@@ -1,0 +1,7 @@
+# Dependências para o LLM Router
+
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Opcionais (se for usar providers OpenAI-style no futuro)
+# openai>=1.0.0
