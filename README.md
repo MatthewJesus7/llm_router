@@ -46,8 +46,7 @@ print(response)
 | Arquivo | Conteúdo |
 |---|---|
 | [`docs/START_HERE.md`](docs/START_HERE.md) | Setup, fluxo, providers e troubleshooting |
-| [`docs/GUIDE.md`](docs/GUIDE.md) | Referência completa do sistema |
-| [`docs/core.md`](docs/core.md) | AIProvider e ProviderManager em detalhe |
+| [`docs/GUIDE.md`](docs/DOCS.md) | Referência completa do sistema |
 | [`docs/logging.md`](docs/logging.md) | Configuração de logs |
 | [`docs/all_code.md`](docs/all_code.md) | Todo o código em um lugar só |
 
