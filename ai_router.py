@@ -7,9 +7,9 @@
 import os, logging
 from dotenv import load_dotenv
 from typing import Optional
-from llms.ai_core import AIProvider, ProviderManager
-from llms.ai_builders import build_google_ai_studio, build_grok_payload, build_deepseek_payload
-from llms.ai_parsers import parse_google_ai_response, parse_json_text_response
+from mikrotheos_backend.app.llm_router.ai_core import AIProvider, ProviderManager
+from mikrotheos_backend.app.llm_router.ai_builders import build_google_ai_studio, build_grok_payload, build_deepseek_payload
+from mikrotheos_backend.app.llm_router.ai_parsers import parse_google_ai_response, parse_json_text_response
 
 logging.basicConfig(
     level=logging.INFO,
