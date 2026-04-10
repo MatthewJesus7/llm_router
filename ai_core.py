@@ -147,7 +147,7 @@ class ProviderManager:
 
                 elif 400 <= resp.status_code < 600:
                     logger.warning(f"[{p.name}] erro HTTP {resp.status_code}")
-                    p.force_exhaust(ttl_seconds=10)
+                    p.force_exhaust(ttl_seconds=4)
 
             except Exception as e:
                 logger.exception(f"[{p.name}] erro na request: {e}")
