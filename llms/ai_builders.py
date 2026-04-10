@@ -7,21 +7,11 @@
 
 import os
 from typing import Dict, Any
-from openai import OpenAI  # opcional, só para providers estilo OpenAI (Groq, Together, etc.)
+# from openai import OpenAI  # opcional, só para providers estilo OpenAI (Groq, Together, etc.)
 
 
 # Payload para Google AI Studio (Gemini)
 # Parâmetros configuráveis via .env: GOOGLE_MAX_Ofrom openai import OpenAI  # pip install openaiUTPUT_TOKENS
-def build_google_ai_studio(prompt: str, temperature: float = 0.7, model: str = "gemini-2.5-flash") -> Dict[str, Any]:
-    max_tokens = int(os.getenv("GOOGLE_MAX_OUTPUT_TOKENS", "8192"))
-    return {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": temperature,
-            "maxOutputTokens": max_tokens,
-            "topP": 0.95          # ajuste aqui se quiser controlar diversidade
-        }
-    }
 
 
 # Payload para APIs estilo OpenAI (Groq, Together, OpenAI, etc.)
@@ -40,3 +30,51 @@ def build_openai_style(prompt: str, temperature: float = 0.7, model: str = "gpt-
         temperature=temperature,
     )
     return response.choices[0].message.content
+
+
+def build_google_ai_studio(prompt: str, temperature: float = 0.7, model: str = "gemini-2.5-flash") -> Dict[str, Any]:
+    max_tokens = int(os.getenv("GOOGLE_MAX_OUTPUT_TOKENS", "8192"))
+    return {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens,
+            "topP": 0.95
+        }
+    }
+
+def build_deepseek_payload(prompt: str, temperature: float = 0.7, model: str = "deepseek-chat") -> Dict[str, Any]:
+    """
+    Monta payload compatível com a API da DeepSeek.
+    Formato OpenAI-compatible (mesmo do Grok, OpenAI, etc).
+    Modelos principais:
+    - "deepseek-chat": DeepSeek-V3.2 (modo normal, rápido e geral)
+    - "deepseek-reasoner": DeepSeek-V3.2 (modo thinking/reasoning, mais poderoso para tarefas complexas)
+    """
+    max_tokens = int(os.getenv("DEEPSEEK_MAX_TOKENS", "65536"))  # ajuste conforme necessidade
+    return {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False
+    }
+
+def build_grok_payload(prompt: str, temperature: float = 0.7, model: str = "grok-beta") -> Dict[str, Any]:
+    """
+    Monta payload compatível com a API da xAI (Grok).
+    Formato OpenAI-compatible (mesmo do OpenAI, Anthropic, etc).
+    """
+    max_tokens = int(os.getenv("GROK_MAX_TOKENS", "10000"))
+    return {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False
+    }
+

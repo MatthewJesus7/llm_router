@@ -8,8 +8,8 @@ import os, logging
 from dotenv import load_dotenv
 from typing import Optional
 from llms.ai_core import AIProvider, ProviderManager
-from llms.ai_builders import build_google_ai_studio
-from llms.ai_parsers import parse_google_ai_response
+from llms.ai_builders import build_google_ai_studio, build_grok_payload, build_deepseek_payload
+from llms.ai_parsers import parse_google_ai_response, parse_json_text_response
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,6 +46,7 @@ def make_providers():
     #
     # ──────────────────────────────────────────────────────────
 
+
     google_key = os.getenv("GOOGLE_API_KEY")
 
     if not google_key:
@@ -71,6 +72,66 @@ def make_providers():
     ))
 
     logger.info(f"{len(providers)} provider(s) configurado(s)")
+
+
+
+            # -----------------------------
+    # Provider: DeepSeek
+    # -----------------------------
+    deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+    if deepseek_key:
+        providers.append(
+            AIProvider(
+                name="DeepSeek",
+                api_key_env="DEEPSEEK_API_KEY",
+                endpoint="https://api.deepseek.com/chat/completions",  # ou "https://api.deepseek.com/v1/chat/completions" para compatibilidade total
+                make_headers=lambda key: {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {key}"
+                },
+                build_payload=lambda prompt, temp: build_deepseek_payload(
+                    prompt, temp, model="deepseek-reasoner"  # mude para "deepseek-reasoner" se quiser o modo reasoning
+                ),
+                parse_response=parse_json_text_response,  # mesmo parser OpenAI-style funciona perfeitamente
+                usage_limit=int(os.getenv("DEEPSEEK_USAGE_LIMIT", "100")),  # ajuste conforme seu plano/necessidade
+                window_seconds=int(os.getenv("DEEPSEEK_WINDOW_S", "60")),
+                timeout=int(os.getenv("DEEPSEEK_TIMEOUT", "120")),  # DeepSeek pode demorar mais no modo reasoner
+                model="deepseek-chat",  # ou "deepseek-reasoner"
+            )
+        )
+        logger.info("Provider DeepSeek configurado e ativo")
+    else:
+        logger.info("DEEPSEEK_API_KEY não encontrada → DeepSeek desativado")
+
+        # -----------------------------
+    # Provider: Grok (xAI)
+    # -----------------------------
+    grok_key = os.getenv("GROK_API_KEY")
+    if grok_key:
+        providers.append(
+            AIProvider(
+                name="Grok",
+                api_key_env="GROK_API_KEY",
+                endpoint="https://api.x.ai/v1/chat/completions",  # endpoint oficial da xAI
+                make_headers=lambda key: {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {key}"
+                },
+                build_payload=lambda prompt, temp: build_grok_payload(
+                    prompt, temp, model="grok-4-1-fast-reasoning"
+                ),
+                parse_response=parse_json_text_response,  # reutiliza o parser OpenAI-style (funciona perfeitamente)
+                usage_limit=int(os.getenv("GROK_USAGE_LIMIT", "60")),     # ajuste conforme seu plano
+                window_seconds=int(os.getenv("GROK_WINDOW_S", "60")),
+                timeout=int(os.getenv("GROK_TIMEOUT", "60")),
+                model="grok-4-1-fast-reasoning",
+            )
+        )
+        logger.info("Provider Grok (xAI) configurado e ativo")
+    else:
+        logger.info("GROK_API_KEY não encontrada → Grok desativado")
+
+
     return providers
 
 
