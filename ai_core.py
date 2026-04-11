@@ -98,6 +98,9 @@ class ProviderManager:
             raise RuntimeError("Nenhum provider configurado com chave de API.")
 
         logger.info(f"{len(self.providers)} provider(s) ativos")
+
+        self.providers_map = {p.name.lower(): p for p in self.providers}
+
         self.idx = 0
         self.lock = threading.Lock()
 
@@ -121,37 +124,58 @@ class ProviderManager:
         logger.error("Nenhum provider disponível")
         return None
 
-    # Método principal — chame este para obter uma resposta de texto
-    # Tenta cada provider disponível em sequência até um responder com sucesso
-    def ask(self, prompt: str, temperature: float = 0.7) -> str:
+    def _execute(self, p: AIProvider, prompt: str, temperature: float) -> Optional[str]:
+        try:
+            resp = p.send(prompt, temperature)
+
+            if 200 <= resp.status_code < 300:
+                text = p.parse_response(resp)
+                p.mark_usage(1)
+                return text.strip()
+
+            if resp.status_code == 429:
+                p.force_exhaust(ttl_seconds=int(p.window_seconds / 2))
+
+            elif 400 <= resp.status_code < 600:
+                p.force_exhaust(ttl_seconds=4)
+
+        except Exception as e:
+            logger.exception(f"[{p.name}] erro na request: {e}")
+            p.force_exhaust(ttl_seconds=5)
+
+        return None
+
+    def ask(self, prompt: str, temperature: float = 0.7, provider_name: str = None) -> str:
+        # ── override manual ─────────────────────────────
+        if provider_name:
+            p = self.providers_map.get(provider_name.strip().lower())
+
+            if not p:
+                raise ValueError(f"Provider '{provider_name}' não encontrado")
+
+            if not p.can_use():
+                raise RuntimeError(f"Provider '{p.name}' indisponível (rate limit/cooldown)")
+
+            result = self._execute(p, prompt, temperature)
+            if result:
+                return result
+
+            raise RuntimeError(f"Provider '{p.name}' falhou na execução")
+
+        # ── comportamento original ──────────────────────
         for attempt in range(len(self.providers)):
             p = self.get_available_provider()
 
             if not p:
                 break
 
-            try:
-                logger.debug(f"[{p.name}] tentativa {attempt+1}")
-                resp = p.send(prompt, temperature)
-                logger.debug(f"[{p.name}] status {resp.status_code}")
-
-                if 200 <= resp.status_code < 300:
-                    text = p.parse_response(resp)
-                    p.mark_usage(1)
-                    logger.info(f"[{p.name}] sucesso")
-                    return text.strip()
-
-                if resp.status_code == 429:
-                    logger.warning(f"[{p.name}] rate limited (429)")
-                    p.force_exhaust(ttl_seconds=int(p.window_seconds / 2))
-
-                elif 400 <= resp.status_code < 600:
-                    logger.warning(f"[{p.name}] erro HTTP {resp.status_code}")
-                    p.force_exhaust(ttl_seconds=4)
-
-            except Exception as e:
-                logger.exception(f"[{p.name}] erro na request: {e}")
-                p.force_exhaust(ttl_seconds=5)
+            result = self._execute(p, prompt, temperature)
+            if result:
+                logger.info(f"[{p.name}] sucesso")
+                return result
 
         logger.critical("Todos providers falharam")
         raise RuntimeError("Todos providers falharam.")
+
+    def available_providers(self) -> List[str]:
+        return list(self.providers_map.keys())
