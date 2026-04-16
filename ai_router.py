@@ -8,7 +8,7 @@ import os, logging
 from dotenv import load_dotenv
 from typing import Optional
 from app.llm_router.ai_core import AIProvider, ProviderManager
-from app.llm_router.ai_builders import build_google_ai_studio, build_grok_payload, build_deepseek_payload
+from app.llm_router.ai_builders import build_google_ai_studio, build_grok_payload, build_deepseek_payload, build_venice_payload
 from app.llm_router.ai_parsers import parse_google_ai_response, parse_json_text_response
 
 logging.basicConfig(
@@ -130,6 +130,35 @@ def make_providers():
         logger.info("Provider Grok (xAI) configurado e ativo")
     else:
         logger.info("GROK_API_KEY não encontrada → Grok desativado")
+
+
+    # -----------------------------
+    # Provider: Venice.ai
+    # -----------------------------
+    venice_key = os.getenv("VENICE_API_KEY")
+    if venice_key:
+        providers.append(
+            AIProvider(
+                name="Venice",
+                api_key_env="VENICE_API_KEY",
+                endpoint="https://api.venice.ai/api/v1/chat/completions",   # endpoint oficial
+                make_headers=lambda key: {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {key}"
+                },
+                build_payload=lambda prompt, temp: build_venice_payload(
+                    prompt, temp, model="venice-uncensored-1-2"   # ← mude aqui se quiser outro modelo default
+                ),
+                parse_response=parse_json_text_response,   # funciona perfeitamente
+                usage_limit=int(os.getenv("VENICE_USAGE_LIMIT", "120")),   # ajuste conforme seu plano
+                window_seconds=int(os.getenv("VENICE_WINDOW_S", "60")),
+                timeout=int(os.getenv("VENICE_TIMEOUT", "90")),
+                model="venice-uncensored-1-2",
+            )
+        )
+        logger.info("Provider Venice.ai configurado e ativo")
+    else:
+        logger.info("VENICE_API_KEY não encontrada → Venice desativado")
 
 
     return providers

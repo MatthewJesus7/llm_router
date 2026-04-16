@@ -6,6 +6,7 @@
 # ai_parsers.py: 
 
 # parsers.py
+# parsers.py
 # ─────────────────────────────────────────────────────────────
 # Não precisa mexer aqui a menos que adicione um provider novo
 # com formato de resposta diferente de Google AI ou OpenAI-style
@@ -220,6 +221,9 @@ class ProviderManager:
             raise RuntimeError("Nenhum provider configurado com chave de API.")
 
         logger.info(f"{len(self.providers)} provider(s) ativos")
+
+        self.providers_map = {p.name.lower(): p for p in self.providers}
+
         self.idx = 0
         self.lock = threading.Lock()
 
@@ -243,41 +247,61 @@ class ProviderManager:
         logger.error("Nenhum provider disponível")
         return None
 
-    # Método principal — chame este para obter uma resposta de texto
-    # Tenta cada provider disponível em sequência até um responder com sucesso
-    def ask(self, prompt: str, temperature: float = 0.7) -> str:
+    def _execute(self, p: AIProvider, prompt: str, temperature: float) -> Optional[str]:
+        try:
+            resp = p.send(prompt, temperature)
+
+            if 200 <= resp.status_code < 300:
+                text = p.parse_response(resp)
+                p.mark_usage(1)
+                return text.strip()
+
+            if resp.status_code == 429:
+                p.force_exhaust(ttl_seconds=int(p.window_seconds / 2))
+
+            elif 400 <= resp.status_code < 600:
+                p.force_exhaust(ttl_seconds=4)
+
+        except Exception as e:
+            logger.exception(f"[{p.name}] erro na request: {e}")
+            p.force_exhaust(ttl_seconds=5)
+
+        return None
+
+    def ask(self, prompt: str, temperature: float = 0.7, provider_name: str = None) -> str:
+        # ── override manual ─────────────────────────────
+        if provider_name:
+            p = self.providers_map.get(provider_name.strip().lower())
+
+            if not p:
+                raise ValueError(f"Provider '{provider_name}' não encontrado")
+
+            if not p.can_use():
+                raise RuntimeError(f"Provider '{p.name}' indisponível (rate limit/cooldown)")
+
+            result = self._execute(p, prompt, temperature)
+            if result:
+                return result
+
+            raise RuntimeError(f"Provider '{p.name}' falhou na execução")
+
+        # ── comportamento original ──────────────────────
         for attempt in range(len(self.providers)):
             p = self.get_available_provider()
 
             if not p:
                 break
 
-            try:
-                logger.debug(f"[{p.name}] tentativa {attempt+1}")
-                resp = p.send(prompt, temperature)
-                logger.debug(f"[{p.name}] status {resp.status_code}")
-
-                if 200 <= resp.status_code < 300:
-                    text = p.parse_response(resp)
-                    p.mark_usage(1)
-                    logger.info(f"[{p.name}] sucesso")
-                    return text.strip()
-
-                if resp.status_code == 429:
-                    logger.warning(f"[{p.name}] rate limited (429)")
-                    p.force_exhaust(ttl_seconds=int(p.window_seconds / 2))
-
-                elif 400 <= resp.status_code < 600:
-                    logger.warning(f"[{p.name}] erro HTTP {resp.status_code}")
-                    p.force_exhaust(ttl_seconds=10)
-
-            except Exception as e:
-                logger.exception(f"[{p.name}] erro na request: {e}")
-                p.force_exhaust(ttl_seconds=5)
+            result = self._execute(p, prompt, temperature)
+            if result:
+                logger.info(f"[{p.name}] sucesso")
+                return result
 
         logger.critical("Todos providers falharam")
         raise RuntimeError("Todos providers falharam.")
-        
+
+    def available_providers(self) -> List[str]:
+        return list(self.providers_map.keys())
         
 
 # ai_builders.py: 
@@ -291,11 +315,31 @@ class ProviderManager:
 
 import os
 from typing import Dict, Any
-from xmlrpc import client
+# from openai import OpenAI  # opcional, só para providers estilo OpenAI (Groq, Together, etc.)
 
 
 # Payload para Google AI Studio (Gemini)
-# Parâmetros configuráveis via .env: GOOGLE_MAX_OUTPUT_TOKENS
+# Parâmetros configuráveis via .env: GOOGLE_MAX_Ofrom openai import OpenAI  # pip install openaiUTPUT_TOKENS
+
+
+# Payload para APIs estilo OpenAI (Groq, Together, OpenAI, etc.)
+# Parâmetros configuráveis via .env: OPENAI_MAX_TOKENS
+# Para adicionar um provider compatível, basta chamar esta função em ai_router.py
+# passando o modelo correto como argumento
+
+def build_openai_style(prompt: str, temperature: float = 0.7, model: str = "gpt-4o-mini") -> str:
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    max_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "1024"))
+    
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    return response.choices[0].message.content
+
+
 def build_google_ai_studio(prompt: str, temperature: float = 0.7, model: str = "gemini-2.5-flash") -> Dict[str, Any]:
     max_tokens = int(os.getenv("GOOGLE_MAX_OUTPUT_TOKENS", "8192"))
     return {
@@ -303,32 +347,44 @@ def build_google_ai_studio(prompt: str, temperature: float = 0.7, model: str = "
         "generationConfig": {
             "temperature": temperature,
             "maxOutputTokens": max_tokens,
-            "topP": 0.95          # ajuste aqui se quiser controlar diversidade
+            "topP": 0.95
         }
     }
 
-
-# Payload para APIs estilo OpenAI (Groq, Together, OpenAI, etc.)
-# Parâmetros configuráveis via .env: OPENAI_MAX_TOKENS
-# Para adicionar um provider compatível, basta chamar esta função em ai_router.py
-# passando o modelo correto como argumento
-def build_openai_style(
-    prompt: str,
-    temperature: float = 0.7,
-    model: str = "gpt-4o-mini"
-) -> str:
-    max_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "1024"))
-
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
+def build_deepseek_payload(prompt: str, temperature: float = 0.7, model: str = "deepseek-chat") -> Dict[str, Any]:
+    """
+    Monta payload compatível com a API da DeepSeek.
+    Formato OpenAI-compatible (mesmo do Grok, OpenAI, etc).
+    Modelos principais:
+    - "deepseek-chat": DeepSeek-V3.2 (modo normal, rápido e geral)
+    - "deepseek-reasoner": DeepSeek-V3.2 (modo thinking/reasoning, mais poderoso para tarefas complexas)
+    """
+    max_tokens = int(os.getenv("DEEPSEEK_MAX_TOKENS", "65536"))  # ajuste conforme necessidade
+    return {
+        "model": model,
+        "messages": [
             {"role": "user", "content": prompt}
         ],
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False
+    }
 
-    return response.choices[0].message.content
+def build_grok_payload(prompt: str, temperature: float = 0.7, model: str = "grok-beta") -> Dict[str, Any]:
+    """
+    Monta payload compatível com a API da xAI (Grok).
+    Formato OpenAI-compatible (mesmo do OpenAI, Anthropic, etc).
+    """
+    max_tokens = int(os.getenv("GROK_MAX_TOKENS", "10000"))
+    return {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False
+    }
 
 
 # ai_router.py: 
@@ -342,9 +398,9 @@ def build_openai_style(
 import os, logging
 from dotenv import load_dotenv
 from typing import Optional
-from llms.ai_core import AIProvider, ProviderManager
-from llms.ai_builders import build_google_ai_studio
-from llms.ai_parsers import parse_google_ai_response
+from app.llm_router.ai_core import AIProvider, ProviderManager
+from app.llm_router.ai_builders import build_google_ai_studio, build_grok_payload, build_deepseek_payload
+from app.llm_router.ai_parsers import parse_google_ai_response, parse_json_text_response
 
 logging.basicConfig(
     level=logging.INFO,
@@ -381,6 +437,7 @@ def make_providers():
     #
     # ──────────────────────────────────────────────────────────
 
+
     google_key = os.getenv("GOOGLE_API_KEY")
 
     if not google_key:
@@ -406,6 +463,66 @@ def make_providers():
     ))
 
     logger.info(f"{len(providers)} provider(s) configurado(s)")
+
+
+
+            # -----------------------------
+    # Provider: DeepSeek
+    # -----------------------------
+    deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+    if deepseek_key:
+        providers.append(
+            AIProvider(
+                name="DeepSeek",
+                api_key_env="DEEPSEEK_API_KEY",
+                endpoint="https://api.deepseek.com/chat/completions",  # ou "https://api.deepseek.com/v1/chat/completions" para compatibilidade total
+                make_headers=lambda key: {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {key}"
+                },
+                build_payload=lambda prompt, temp: build_deepseek_payload(
+                    prompt, temp, model="deepseek-reasoner"  # mude para "deepseek-reasoner" se quiser o modo reasoning
+                ),
+                parse_response=parse_json_text_response,  # mesmo parser OpenAI-style funciona perfeitamente
+                usage_limit=int(os.getenv("DEEPSEEK_USAGE_LIMIT", "100")),  # ajuste conforme seu plano/necessidade
+                window_seconds=int(os.getenv("DEEPSEEK_WINDOW_S", "60")),
+                timeout=int(os.getenv("DEEPSEEK_TIMEOUT", "120")),  # DeepSeek pode demorar mais no modo reasoner
+                model="deepseek-chat",  # ou "deepseek-reasoner"
+            )
+        )
+        logger.info("Provider DeepSeek configurado e ativo")
+    else:
+        logger.info("DEEPSEEK_API_KEY não encontrada → DeepSeek desativado")
+
+        # -----------------------------
+    # Provider: Grok (xAI)
+    # -----------------------------
+    grok_key = os.getenv("GROK_API_KEY")
+    if grok_key:
+        providers.append(
+            AIProvider(
+                name="Grok",
+                api_key_env="GROK_API_KEY",
+                endpoint="https://api.x.ai/v1/chat/completions",  # endpoint oficial da xAI
+                make_headers=lambda key: {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {key}"
+                },
+                build_payload=lambda prompt, temp: build_grok_payload(
+                    prompt, temp, model="grok-4-1-fast-reasoning"
+                ),
+                parse_response=parse_json_text_response,  # reutiliza o parser OpenAI-style (funciona perfeitamente)
+                usage_limit=int(os.getenv("GROK_USAGE_LIMIT", "60")),     # ajuste conforme seu plano
+                window_seconds=int(os.getenv("GROK_WINDOW_S", "60")),
+                timeout=int(os.getenv("GROK_TIMEOUT", "60")),
+                model="grok-4-1-fast-reasoning",
+            )
+        )
+        logger.info("Provider Grok (xAI) configurado e ativo")
+    else:
+        logger.info("GROK_API_KEY não encontrada → Grok desativado")
+
+
     return providers
 
 

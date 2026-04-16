@@ -78,3 +78,24 @@ def build_grok_payload(prompt: str, temperature: float = 0.7, model: str = "grok
         "stream": False
     }
 
+
+def build_venice_payload(prompt: str, temperature: float = 0.7, model: str = "venice-uncensored-1-2") -> Dict[str, Any]:
+    """
+    Monta payload compatível com a API da Venice.ai.
+    Formato OpenAI-compatible (igual DeepSeek e Grok).
+    Modelos recomendados:
+    - "venice-uncensored-1-2"     → uncensored (o mais famoso deles)
+    - "zai-org-glm-4.7"           → flagship forte em raciocínio
+    - "grok-41-fast"              → rápido e bom
+    Troque o default no lambda lá embaixo se quiser outro modelo.
+    """
+    max_tokens = int(os.getenv("VENICE_MAX_TOKENS", "8192"))
+    return {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,          # eles aceitam (max_completion_tokens também funciona, mas max_tokens ainda é ok)
+        "stream": False
+    }
