@@ -165,7 +165,12 @@ def _new_thread(thread_id: str, assistant_id: str, extra_metadata: Dict = {}) ->
 
 @app.get("/info")
 def info():
-    return {"version": "2.1.0", "graphs": {"agent": {"id": "agent"}}}
+    provider_names = [p.name for p in ai_router.providers] if ai_router else []
+    return {
+        "version": "2.1.0",
+        "graphs": {"agent": {"id": "agent"}},
+        "providers": provider_names,
+    }
 
 
 # ─── Threads ──────────────────────────────────────────────────────────────────
@@ -282,10 +287,9 @@ async def stream_run(thread_id: str, request: Request):
         )
 
     # Junta mensagens existentes com as novas
-    existing: List[Dict] = thread["values"].get("messages", [])
     input_data: Dict = body.get("input", {}) or {}
     new_messages: List[Dict] = input_data.get("messages", [])
-    all_messages = existing + new_messages
+    all_messages = new_messages
     prompt = _build_prompt(all_messages)
 
     logger.info(f"[{thread_id}] stream iniciado | provider={provider_name} | msgs={len(all_messages)}")

@@ -96,6 +96,16 @@ OPENAI_PROVIDERS = [
         "timeout_env": "VENICE_TIMEOUT",
         "timeout_default": 90,
     },
+        {
+        "name": "qwen3-coder-instruct-turbo",
+        "api_key_env": "VENICE_API_KEY",
+        "endpoint": "https://api.venice.ai/api/v1/chat/completions",
+        "model": "qwen3-coder-480b-a35b-instruct-turbo",
+        "max_tokens_env": "QWEN_CODER_MAX_TOKENS",
+        "usage_limit_env": "QWEN_CODER_USAGE_LIMIT",
+        "window_env": "QWEN_CODER_WINDOW_S",
+        "timeout_env": "QWEN_CODER_TIMEOUT",
+    },
 
     # ── Novo provider? Copie o bloco acima e preencha ──────────
     #
