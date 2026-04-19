@@ -99,7 +99,7 @@ async def verify_key(key: Optional[str] = Depends(_api_key_header)) -> None:
 
 
 # ─── CORS ─────────────────────────────────────────────────────────────────────
-_ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+_ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
 app = FastAPI(title="llm_router API", version="2.1.0")
 app.add_middleware(
