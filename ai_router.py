@@ -84,6 +84,19 @@ OPENAI_PROVIDERS = [
         "timeout_env": "VENICE_TIMEOUT",
         "timeout_default": 90,
     },
+    {
+        "name": "glm-4.7-flash-heretic",
+        "api_key_env": "VENICE_API_KEY",
+        "endpoint": "https://api.venice.ai/api/v1/chat/completions",
+        "model": "olafangensan-glm-4.7-flash-heretic",
+        "max_tokens_env": "VENICE_MAX_TOKENS",
+        "default_max_tokens": 8192,
+        "usage_limit_env": "VENICE_USAGE_LIMIT",
+        "window_env": "VENICE_WINDOW_S",
+        "timeout_env": "VENICE_TIMEOUT",
+        "timeout_default": 90,
+    },
+
     # ── Novo provider? Copie o bloco acima e preencha ──────────
     #
     # {

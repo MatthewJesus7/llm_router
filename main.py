@@ -280,8 +280,6 @@ async def stream_run(thread_id: str, request: Request):
         logger.error(
             f"[{thread_id}] provider_name ausente — nem no body nem na metadata da thread."
         )
-        provider_name = "Grok"
-        print("hardcoded: colocando provider forçado (linha 279-280 do main.py), provider atual:" + provider_name)
 
     # Junta mensagens existentes com as novas
     existing: List[Dict] = thread["values"].get("messages", [])
