@@ -8,9 +8,8 @@ import requests, logging
 logger = logging.getLogger("ai-router")
 
 
-# Fallback genérico — percorre o JSON em busca de qualquer texto útil
-# Usado quando o formato da resposta não bate com os padrões conhecidos
 def _find_text_in_json(obj, max_depth=6):
+    """Fallback genérico — percorre o JSON em busca de qualquer texto útil."""
     if max_depth <= 0:
         return None
     if isinstance(obj, str) and obj.strip():
@@ -19,19 +18,17 @@ def _find_text_in_json(obj, max_depth=6):
         for key, value in obj.items():
             if key in ["text", "output", "generated_text", "result"] and isinstance(value, str):
                 return value.strip()
-            res = _find_text_in_json(value, max_depth-1)
+            res = _find_text_in_json(value, max_depth - 1)
             if res:
                 return res
     if isinstance(obj, list):
         for item in obj:
-            res = _find_text_in_json(item, max_depth-1)
+            res = _find_text_in_json(item, max_depth - 1)
             if res:
                 return res
     return None
 
 
-# Parser para respostas da Google AI (Gemini)
-# Se adicionar outro modelo Google com estrutura diferente, ajuste aqui
 def parse_google_ai_response(resp: requests.Response) -> str:
     try:
         data = resp.json()
@@ -51,11 +48,10 @@ def parse_google_ai_response(resp: requests.Response) -> str:
             return data["generatedText"].strip()
 
         if "promptFeedback" in data:
-            reason = data['promptFeedback'].get('blockReason','unknown')
+            reason = data["promptFeedback"].get("blockReason", "unknown")
             logger.warning(f"Resposta bloqueada pelo provider: {reason}")
             return f"[Blocked: {reason}]"
 
-        # Último recurso: tenta achar qualquer string no JSON
         text = _find_text_in_json(data)
         if text:
             logger.debug("Fallback parser acionado (_find_text_in_json)")
@@ -80,22 +76,19 @@ def _get_nested_value(obj, keys):
     return current if isinstance(current, str) else None
 
 
-# Parser genérico para APIs estilo OpenAI (e compatíveis como Groq, Together, etc.)
-# Se o seu provider retorna um campo diferente, adicione o caminho em `patterns`
 def parse_json_text_response(resp: requests.Response) -> str:
+    """Parser genérico para APIs estilo OpenAI chat/completions."""
     try:
         j = resp.json()
 
-        # ── adicione aqui novos padrões de resposta se necessário ──
         patterns = [
             ("choices", 0, "message", "content"),
             ("choices", 0, "text"),
             ("generated_text",),
             ("output",),
             ("text",),
-            ("content",)
+            ("content",),
         ]
-        # ────────────────────────────────────────────────────────────
 
         for p in patterns:
             result = _get_nested_value(j, p)
@@ -107,4 +100,87 @@ def parse_json_text_response(resp: requests.Response) -> str:
 
     except Exception as e:
         logger.warning(f"Erro parse JSON genérico: {e}")
+        return resp.text.strip()
+
+
+def parse_grok_response(resp: requests.Response) -> str:
+    """
+    Parser para Grok via Responses API (/v1/responses).
+
+    A estrutura do Responses API é diferente do chat/completions:
+
+    {
+      "output": [
+        {
+          "type": "message",
+          "content": [
+            { "type": "output_text", "text": "resposta aqui" }
+          ]
+        },
+        {
+          "type": "web_search_call",   ← tool call (informativo, não é a resposta)
+          ...
+        }
+      ]
+    }
+
+    Também lida com:
+      - reasoning_content em modelos de reasoning (grok-4.20-*-reasoning)
+      - Fallback para chat/completions caso o endpoint seja o antigo
+    """
+    try:
+        j = resp.json()
+
+        # ── 1. Responses API: output[] com type="message" ─────────────────
+        output_items = j.get("output") or []
+        if isinstance(output_items, list):
+            for item in output_items:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") != "message":
+                    continue
+                content_blocks = item.get("content") or []
+                for block in content_blocks:
+                    if not isinstance(block, dict):
+                        continue
+                    # output_text é o tipo principal de resposta
+                    if block.get("type") == "output_text":
+                        text = block.get("text", "")
+                        if text and text.strip():
+                            return text.strip()
+                    # fallback: qualquer bloco com "text"
+                    text = block.get("text", "")
+                    if text and text.strip():
+                        return text.strip()
+
+        # ── 2. Fallback: formato chat/completions (endpoint antigo) ───────
+        choices = j.get("choices") or []
+        if choices:
+            message = choices[0].get("message") or {}
+            content = message.get("content")
+            if content and content.strip():
+                return content.strip()
+
+            # reasoning_content para modelos de reasoning
+            reasoning = message.get("reasoning_content")
+            if reasoning and reasoning.strip():
+                logger.debug("Grok: usando reasoning_content como fallback")
+                return reasoning.strip()
+
+        # ── 3. Último recurso: varre o JSON ───────────────────────────────
+        text = _find_text_in_json(j)
+        if text:
+            logger.debug("Grok: fallback _find_text_in_json acionado")
+            return text.strip()
+
+        raise RuntimeError(
+            f"Grok Responses API: nenhum texto extraível. "
+            f"output_types={[i.get('type') for i in output_items]}. "
+            f"JSON (300 chars): {str(j)[:300]}"
+        )
+
+    except RuntimeError:
+        raise
+    except Exception as e:
+        logger.warning(f"Erro parse Grok: {e}")
         return resp.text.strip()

@@ -12,8 +12,8 @@
 #
 # Para providers Grok COM pesquisa em tempo real:
 #   Use "builder": "grok_search" na entrada de OPENAI_PROVIDERS.
-#   Opcionalmente, passe "search_type", "allowed_domains" e
-#   "allowed_x_handles" para refinar o comportamento de busca.
+#   O endpoint DEVE ser /v1/responses (não /v1/chat/completions).
+#   web_search e x_search só funcionam no Responses API (doc xAI).
 # ─────────────────────────────────────────────────────────────
 
 import os
@@ -28,7 +28,11 @@ from app.llm_router.ai_builders import (
     build_grok_with_search,
     build_google_ai_studio,
 )
-from app.llm_router.ai_parsers import parse_google_ai_response, parse_json_text_response
+from app.llm_router.ai_parsers import (
+    parse_google_ai_response,
+    parse_json_text_response,
+    parse_grok_response,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,45 +45,43 @@ load_dotenv()
 
 # ─────────────────────────────────────────────────────────────
 # TABELA DE PROVIDERS OPENAI-COMPATIBLE
-# Adicionar provider novo = uma entrada aqui, nada mais.
 #
 # Campos obrigatórios:
-#   name             → nome de exibição / log
-#   api_key_env      → env var com a chave da API
-#   endpoint         → URL do endpoint de completions
-#   model            → modelo padrão
-#   max_tokens_env   → env var para controlar max_tokens
-#   default_max_tokens → fallback se env não estiver definida
+#   name, api_key_env, endpoint, model, max_tokens_env
 #
-# Campos opcionais (têm fallback):
-#   builder          → "openai" (padrão) ou "grok_search"
-#   search_type      → "web_search" (padrão) ou "x_search"  [só grok_search]
-#   allowed_domains  → lista de domínios permitidos          [só web_search]
-#   allowed_x_handles→ lista de @handles permitidos         [só x_search]
-#   usage_limit_env  → env var para o rate limit de requisições (padrão: 60)
-#   window_env       → env var para a janela em segundos (padrão: 60)
-#   timeout_env      → env var para timeout em segundos (padrão: 60)
+# Campos opcionais:
+#   builder          → "openai" (padrão) | "grok_search" | "grok"
+#   search_type      → "web_search" | "x_search"          [grok_search]
+#   allowed_domains  → lista de domínios permitidos        [web_search]
+#   excluded_domains → lista de domínios bloqueados        [web_search]
+#   allowed_x_handles→ lista de @handles                  [x_search]
+#   default_max_tokens, usage_limit_env, window_env, timeout_env
+#
+# ⚠️  Grok com search: endpoint OBRIGATÓRIO = /v1/responses
+#     (web_search/x_search não existem no /v1/chat/completions)
 # ─────────────────────────────────────────────────────────────
 
 OPENAI_PROVIDERS = [
     {
         "name": "grok-4-1-fast-reasoning",
         "api_key_env": "GROK_API_KEY",
-        "endpoint": "https://api.x.ai/v1/chat/completions",
+        # Responses API — único endpoint que suporta web_search/x_search
+        "endpoint": "https://api.x.ai/v1/responses",
         "model": "grok-4-1-fast-reasoning",
         "max_tokens_env": "GROK_MAX_TOKENS",
         "default_max_tokens": 10000,
         "usage_limit_env": "GROK_USAGE_LIMIT",
         "window_env": "GROK_WINDOW_S",
         "timeout_env": "GROK_TIMEOUT",
-        "builder": "grok_search",       # ← pesquisa ativada
-        "search_type": "web_search",    # "web_search" | "x_search"
-        # "allowed_domains": ["reuters.com", "bbc.com"],  # opcional
+        "builder": "grok_search",
+        "search_type": "web_search",
+        # "allowed_domains": ["reuters.com", "bbc.com"],   # opcional
+        # "excluded_domains": ["reddit.com"],              # opcional
     },
     {
         "name": "grok-4.20-0309-reasoning",
         "api_key_env": "GROK_API_KEY",
-        "endpoint": "https://api.x.ai/v1/chat/completions",
+        "endpoint": "https://api.x.ai/v1/responses",
         "model": "grok-4.20-0309-reasoning",
         "max_tokens_env": "GROK_MAX_TOKENS",
         "default_max_tokens": 10000,
@@ -92,7 +94,7 @@ OPENAI_PROVIDERS = [
     {
         "name": "grok-4.20-multi-agent-0309",
         "api_key_env": "GROK_API_KEY",
-        "endpoint": "https://api.x.ai/v1/chat/completions",
+        "endpoint": "https://api.x.ai/v1/responses",
         "model": "grok-4.20-multi-agent-0309",
         "max_tokens_env": "GROK_MAX_TOKENS",
         "default_max_tokens": 10000,
@@ -146,21 +148,13 @@ OPENAI_PROVIDERS = [
     #     "model": "llama3-8b-8192",
     #     "max_tokens_env": "GROQ_MAX_TOKENS",
     #     "default_max_tokens": 8192,
-    #     "usage_limit_env": "GROQ_USAGE_LIMIT",
-    #     "window_env": "GROQ_WINDOW_S",
-    #     "timeout_env": "GROQ_TIMEOUT",
     # },
 ]
 
+_GROK_BUILDERS = {"grok_search", "grok"}
+
 
 def _make_openai_provider(cfg: dict) -> Optional[AIProvider]:
-    """
-    Factory que transforma uma entrada de OPENAI_PROVIDERS em um AIProvider.
-    Retorna None se a API key não estiver definida.
-
-    Se cfg["builder"] == "grok_search", usa build_grok_with_search;
-    caso contrário, usa build_openai_compatible (padrão).
-    """
     api_key = os.getenv(cfg["api_key_env"])
     if not api_key:
         logger.info(f"{cfg['api_key_env']} não encontrada → {cfg['name']} desativado")
@@ -179,11 +173,11 @@ def _make_openai_provider(cfg: dict) -> Optional[AIProvider]:
             default_max_tokens=default_max_tokens,
             search_type=cfg.get("search_type", "web_search"),
             allowed_domains=cfg.get("allowed_domains"),
+            excluded_domains=cfg.get("excluded_domains"),
             allowed_x_handles=cfg.get("allowed_x_handles"),
         )
         logger.info(
-            f"{cfg['name']} → builder=grok_search "
-            f"(search_type={cfg.get('search_type', 'web_search')})"
+            f"{cfg['name']} → Responses API + search_type={cfg.get('search_type', 'web_search')}"
         )
     else:
         build_payload = partial(
@@ -192,6 +186,12 @@ def _make_openai_provider(cfg: dict) -> Optional[AIProvider]:
             max_tokens_env=max_tokens_env,
             default_max_tokens=default_max_tokens,
         )
+
+    parser = (
+        parse_grok_response
+        if builder_type in _GROK_BUILDERS
+        else parse_json_text_response
+    )
 
     return AIProvider(
         name=cfg["name"],
@@ -202,7 +202,7 @@ def _make_openai_provider(cfg: dict) -> Optional[AIProvider]:
             "Authorization": f"Bearer {key}",
         },
         build_payload=build_payload,
-        parse_response=parse_json_text_response,
+        parse_response=parser,
         usage_limit=int(os.getenv(cfg.get("usage_limit_env", ""), "60") or "60"),
         window_seconds=int(os.getenv(cfg.get("window_env", ""), "60") or "60"),
         timeout=int(
@@ -216,7 +216,6 @@ def _make_openai_provider(cfg: dict) -> Optional[AIProvider]:
 def make_providers() -> list:
     providers = []
 
-    # ── Google AI Studio (formato próprio — não OpenAI-compatible) ──
     google_key = os.getenv("GOOGLE_API_KEY")
     if not google_key:
         logger.critical("GOOGLE_API_KEY não definido")
@@ -239,7 +238,6 @@ def make_providers() -> list:
     ))
     logger.info("Provider GoogleAIStudio configurado")
 
-    # ── Providers OpenAI-compatible (via tabela declarativa) ───
     for cfg in OPENAI_PROVIDERS:
         provider = _make_openai_provider(cfg)
         if provider:
@@ -268,7 +266,4 @@ def create_ai_router() -> Optional[ProviderManager]:
         return None
 
 
-# Instância global — importe nos outros módulos para usar
-# Exemplo: from llms.ai_router import ai_router
-#          resposta = ai_router.ask("seu prompt aqui")
 ai_router = create_ai_router()
