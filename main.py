@@ -26,9 +26,9 @@ Iniciar:
 .env (opcional):
     API_KEY=minha_chave_secreta
     ALLOWED_ORIGINS=http://localhost:3000
-    DB_FILE=threads_db.json
 ───────────────────────────────────────────────────────────────────────────────
 """
+
 
 from __future__ import annotations
 

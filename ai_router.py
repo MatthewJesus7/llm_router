@@ -9,6 +9,11 @@
 # Para um provider com formato diferente (ex: Google):
 #   Crie o builder em ai_builders.py e registre manualmente
 #   na função make_providers(), seguindo o exemplo do Google.
+#
+# Para providers Grok COM pesquisa em tempo real:
+#   Use "builder": "grok_search" na entrada de OPENAI_PROVIDERS.
+#   Opcionalmente, passe "search_type", "allowed_domains" e
+#   "allowed_x_handles" para refinar o comportamento de busca.
 # ─────────────────────────────────────────────────────────────
 
 import os
@@ -18,7 +23,11 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from app.llm_router.ai_core import AIProvider, ProviderManager
-from app.llm_router.ai_builders import build_openai_compatible, build_google_ai_studio
+from app.llm_router.ai_builders import (
+    build_openai_compatible,
+    build_grok_with_search,
+    build_google_ai_studio,
+)
 from app.llm_router.ai_parsers import parse_google_ai_response, parse_json_text_response
 
 logging.basicConfig(
@@ -43,6 +52,10 @@ load_dotenv()
 #   default_max_tokens → fallback se env não estiver definida
 #
 # Campos opcionais (têm fallback):
+#   builder          → "openai" (padrão) ou "grok_search"
+#   search_type      → "web_search" (padrão) ou "x_search"  [só grok_search]
+#   allowed_domains  → lista de domínios permitidos          [só web_search]
+#   allowed_x_handles→ lista de @handles permitidos         [só x_search]
 #   usage_limit_env  → env var para o rate limit de requisições (padrão: 60)
 #   window_env       → env var para a janela em segundos (padrão: 60)
 #   timeout_env      → env var para timeout em segundos (padrão: 60)
@@ -50,19 +63,7 @@ load_dotenv()
 
 OPENAI_PROVIDERS = [
     {
-        "name": "DeepSeek",
-        "api_key_env": "DEEPSEEK_API_KEY",
-        "endpoint": "https://api.deepseek.com/chat/completions",
-        "model": "deepseek-reasoner",
-        "max_tokens_env": "DEEPSEEK_MAX_TOKENS",
-        "default_max_tokens": 65536,
-        "usage_limit_env": "DEEPSEEK_USAGE_LIMIT",
-        "window_env": "DEEPSEEK_WINDOW_S",
-        "timeout_env": "DEEPSEEK_TIMEOUT",
-        "timeout_default": 120,  # reasoner pode demorar mais
-    },
-    {
-        "name": "Grok",
+        "name": "grok-4-1-fast-reasoning",
         "api_key_env": "GROK_API_KEY",
         "endpoint": "https://api.x.ai/v1/chat/completions",
         "model": "grok-4-1-fast-reasoning",
@@ -71,6 +72,35 @@ OPENAI_PROVIDERS = [
         "usage_limit_env": "GROK_USAGE_LIMIT",
         "window_env": "GROK_WINDOW_S",
         "timeout_env": "GROK_TIMEOUT",
+        "builder": "grok_search",       # ← pesquisa ativada
+        "search_type": "web_search",    # "web_search" | "x_search"
+        # "allowed_domains": ["reuters.com", "bbc.com"],  # opcional
+    },
+    {
+        "name": "grok-4.20-0309-reasoning",
+        "api_key_env": "GROK_API_KEY",
+        "endpoint": "https://api.x.ai/v1/chat/completions",
+        "model": "grok-4.20-0309-reasoning",
+        "max_tokens_env": "GROK_MAX_TOKENS",
+        "default_max_tokens": 10000,
+        "usage_limit_env": "GROK_USAGE_LIMIT",
+        "window_env": "GROK_WINDOW_S",
+        "timeout_env": "GROK_TIMEOUT",
+        "builder": "grok_search",
+        "search_type": "web_search",
+    },
+    {
+        "name": "grok-4.20-multi-agent-0309",
+        "api_key_env": "GROK_API_KEY",
+        "endpoint": "https://api.x.ai/v1/chat/completions",
+        "model": "grok-4.20-multi-agent-0309",
+        "max_tokens_env": "GROK_MAX_TOKENS",
+        "default_max_tokens": 10000,
+        "usage_limit_env": "GROK_USAGE_LIMIT",
+        "window_env": "GROK_WINDOW_S",
+        "timeout_env": "GROK_TIMEOUT",
+        "builder": "grok_search",
+        "search_type": "web_search",
     },
     {
         "name": "Venice",
@@ -96,7 +126,7 @@ OPENAI_PROVIDERS = [
         "timeout_env": "VENICE_TIMEOUT",
         "timeout_default": 90,
     },
-        {
+    {
         "name": "qwen3-coder-instruct-turbo",
         "api_key_env": "VENICE_API_KEY",
         "endpoint": "https://api.venice.ai/api/v1/chat/completions",
@@ -127,6 +157,9 @@ def _make_openai_provider(cfg: dict) -> Optional[AIProvider]:
     """
     Factory que transforma uma entrada de OPENAI_PROVIDERS em um AIProvider.
     Retorna None se a API key não estiver definida.
+
+    Se cfg["builder"] == "grok_search", usa build_grok_with_search;
+    caso contrário, usa build_openai_compatible (padrão).
     """
     api_key = os.getenv(cfg["api_key_env"])
     if not api_key:
@@ -136,6 +169,29 @@ def _make_openai_provider(cfg: dict) -> Optional[AIProvider]:
     model = cfg["model"]
     max_tokens_env = cfg["max_tokens_env"]
     default_max_tokens = cfg.get("default_max_tokens", 8192)
+    builder_type = cfg.get("builder", "openai")
+
+    if builder_type == "grok_search":
+        build_payload = partial(
+            build_grok_with_search,
+            model=model,
+            max_tokens_env=max_tokens_env,
+            default_max_tokens=default_max_tokens,
+            search_type=cfg.get("search_type", "web_search"),
+            allowed_domains=cfg.get("allowed_domains"),
+            allowed_x_handles=cfg.get("allowed_x_handles"),
+        )
+        logger.info(
+            f"{cfg['name']} → builder=grok_search "
+            f"(search_type={cfg.get('search_type', 'web_search')})"
+        )
+    else:
+        build_payload = partial(
+            build_openai_compatible,
+            model=model,
+            max_tokens_env=max_tokens_env,
+            default_max_tokens=default_max_tokens,
+        )
 
     return AIProvider(
         name=cfg["name"],
@@ -145,16 +201,14 @@ def _make_openai_provider(cfg: dict) -> Optional[AIProvider]:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {key}",
         },
-        build_payload=partial(
-            build_openai_compatible,
-            model=model,
-            max_tokens_env=max_tokens_env,
-            default_max_tokens=default_max_tokens,
-        ),
+        build_payload=build_payload,
         parse_response=parse_json_text_response,
         usage_limit=int(os.getenv(cfg.get("usage_limit_env", ""), "60") or "60"),
         window_seconds=int(os.getenv(cfg.get("window_env", ""), "60") or "60"),
-        timeout=int(os.getenv(cfg.get("timeout_env", ""), str(cfg.get("timeout_default", 60))) or "60"),
+        timeout=int(
+            os.getenv(cfg.get("timeout_env", ""), str(cfg.get("timeout_default", 60)))
+            or "60"
+        ),
         model=model,
     )
 

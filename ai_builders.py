@@ -6,11 +6,13 @@
 # Estrutura:
 #   build_openai_compatible  → funciona pra QUALQUER provider OpenAI-style
 #                              (DeepSeek, Grok, Venice, Groq, Together, etc.)
+#   build_grok_with_search   → igual ao OpenAI-compatible, mas injeta o
+#                              tool de web_search (ou x_search) do Grok
 #   build_google_ai_studio   → único formato diferente que temos hoje
 # ─────────────────────────────────────────────────────────────
 
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Literal
 
 
 def build_openai_compatible(
@@ -39,6 +41,55 @@ def build_openai_compatible(
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": False,
+    }
+
+
+def build_grok_with_search(
+    prompt: str,
+    temperature: float,
+    model: str,
+    max_tokens_env: str,
+    default_max_tokens: int = 10000,
+    search_type: Literal["web_search", "x_search"] = "web_search",
+    allowed_domains: list[str] | None = None,
+    allowed_x_handles: list[str] | None = None,
+) -> Dict[str, Any]:
+    """
+    Builder para providers Grok com pesquisa em tempo real ativada.
+
+    Idêntico ao build_openai_compatible, mas injeta o tool de busca
+    no payload para que o Grok consulte a web (ou o X) antes de responder.
+
+    Parâmetros
+    ----------
+    prompt             : texto do usuário
+    temperature        : temperatura de geração
+    model              : nome do modelo Grok
+    max_tokens_env     : env var para max_tokens
+    default_max_tokens : fallback se a env não estiver definida
+    search_type        : "web_search" (web geral) ou "x_search" (só posts do X)
+    allowed_domains    : (opcional) lista de domínios permitidos p/ web_search
+                         ex: ["reuters.com", "bbc.com"]
+    allowed_x_handles  : (opcional) lista de @handles p/ x_search
+                         ex: ["elonmusk", "xai"]
+    """
+    max_tokens = int(os.getenv(max_tokens_env, str(default_max_tokens)))
+
+    tool: Dict[str, Any] = {"type": search_type}
+
+    if search_type == "web_search" and allowed_domains:
+        tool["filters"] = {"allowed_domains": allowed_domains}
+
+    if search_type == "x_search" and allowed_x_handles:
+        tool["allowed_x_handles"] = allowed_x_handles
+
+    return {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+        "tools": [tool],
     }
 
 
