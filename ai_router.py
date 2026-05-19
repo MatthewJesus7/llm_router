@@ -63,48 +63,6 @@ load_dotenv()
 
 OPENAI_PROVIDERS = [
     {
-        "name": "grok-4-1-fast-reasoning",
-        "api_key_env": "GROK_API_KEY",
-        # Responses API — único endpoint que suporta web_search/x_search
-        "endpoint": "https://api.x.ai/v1/responses",
-        "model": "grok-4-1-fast-reasoning",
-        "max_tokens_env": "GROK_MAX_TOKENS",
-        "default_max_tokens": 10000,
-        "usage_limit_env": "GROK_USAGE_LIMIT",
-        "window_env": "GROK_WINDOW_S",
-        "timeout_env": "GROK_TIMEOUT",
-        "builder": "grok_search",
-        "search_type": "web_search",
-        # "allowed_domains": ["reuters.com", "bbc.com"],   # opcional
-        # "excluded_domains": ["reddit.com"],              # opcional
-    },
-    {
-        "name": "grok-4.20-0309-reasoning",
-        "api_key_env": "GROK_API_KEY",
-        "endpoint": "https://api.x.ai/v1/responses",
-        "model": "grok-4.20-0309-reasoning",
-        "max_tokens_env": "GROK_MAX_TOKENS",
-        "default_max_tokens": 10000,
-        "usage_limit_env": "GROK_USAGE_LIMIT",
-        "window_env": "GROK_WINDOW_S",
-        "timeout_env": "GROK_TIMEOUT",
-        "builder": "grok_search",
-        "search_type": "web_search",
-    },
-    {
-        "name": "grok-4.20-multi-agent-0309",
-        "api_key_env": "GROK_API_KEY",
-        "endpoint": "https://api.x.ai/v1/responses",
-        "model": "grok-4.20-multi-agent-0309",
-        "max_tokens_env": "GROK_MAX_TOKENS",
-        "default_max_tokens": 10000,
-        "usage_limit_env": "GROK_USAGE_LIMIT",
-        "window_env": "GROK_WINDOW_S",
-        "timeout_env": "GROK_TIMEOUT",
-        "builder": "grok_search",
-        "search_type": "web_search",
-    },
-    {
         "name": "Venice",
         "api_key_env": "VENICE_API_KEY",
         "endpoint": "https://api.venice.ai/api/v1/chat/completions",
@@ -114,7 +72,7 @@ OPENAI_PROVIDERS = [
         "usage_limit_env": "VENICE_USAGE_LIMIT",
         "window_env": "VENICE_WINDOW_S",
         "timeout_env": "VENICE_TIMEOUT",
-        "timeout_default": 90,
+        "timeout_default": 300,
     },
     {
         "name": "glm-4.7-flash-heretic",
@@ -126,7 +84,7 @@ OPENAI_PROVIDERS = [
         "usage_limit_env": "VENICE_USAGE_LIMIT",
         "window_env": "VENICE_WINDOW_S",
         "timeout_env": "VENICE_TIMEOUT",
-        "timeout_default": 90,
+        "timeout_default": 300,
     },
     {
         "name": "qwen3-coder-instruct-turbo",
@@ -138,6 +96,28 @@ OPENAI_PROVIDERS = [
         "window_env": "QWEN_CODER_WINDOW_S",
         "timeout_env": "QWEN_CODER_TIMEOUT",
     },
+    {
+        "name": "claude-opus-4-6",
+        "api_key_env": "VENICE_API_KEY",
+        "endpoint": "https://api.venice.ai/api/v1/chat/completions",
+        "model": "claude-opus-4-6",
+        "max_tokens_env": "QWEN_CODER_MAX_TOKENS",
+        "usage_limit_env": "QWEN_CODER_USAGE_LIMIT",
+        "window_env": "QWEN_CODER_WINDOW_S",
+        "timeout_env": "QWEN_CODER_TIMEOUT",
+    },
+    {
+        "name": "claude-sonnet-4-6",
+        "api_key_env": "VENICE_API_KEY",
+        "endpoint": "https://api.venice.ai/api/v1/chat/completions",
+        "model": "claude-sonnet-4-6",
+        "max_tokens_env": "QWEN_CODER_MAX_TOKENS",
+        "usage_limit_env": "QWEN_CODER_USAGE_LIMIT",
+        "window_env": "QWEN_CODER_WINDOW_S",
+        "timeout_env": "QWEN_CODER_TIMEOUT",
+    },
+    #claude-opus-4-6
+    #claude-sonnet-4-6
 
     # ── Novo provider? Copie o bloco acima e preencha ──────────
     #
@@ -206,7 +186,7 @@ def _make_openai_provider(cfg: dict) -> Optional[AIProvider]:
         usage_limit=int(os.getenv(cfg.get("usage_limit_env", ""), "60") or "60"),
         window_seconds=int(os.getenv(cfg.get("window_env", ""), "60") or "60"),
         timeout=int(
-            os.getenv(cfg.get("timeout_env", ""), str(cfg.get("timeout_default", 60)))
+            os.getenv(cfg.get("timeout_env", ""), str(cfg.get("timeout_default", 300)))
             or "60"
         ),
         model=model,
