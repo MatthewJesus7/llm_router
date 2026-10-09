@@ -104,30 +104,7 @@ def parse_json_text_response(resp: requests.Response) -> str:
 
 
 def parse_grok_response(resp: requests.Response) -> str:
-    """
-    Parser para Grok via Responses API (/v1/responses).
-
-    A estrutura do Responses API é diferente do chat/completions:
-
-    {
-      "output": [
-        {
-          "type": "message",
-          "content": [
-            { "type": "output_text", "text": "resposta aqui" }
-          ]
-        },
-        {
-          "type": "web_search_call",   ← tool call (informativo, não é a resposta)
-          ...
-        }
-      ]
-    }
-
-    Também lida com:
-      - reasoning_content em modelos de reasoning (grok-4.20-*-reasoning)
-      - Fallback para chat/completions caso o endpoint seja o antigo
-    """
+ 
     try:
         j = resp.json()
 

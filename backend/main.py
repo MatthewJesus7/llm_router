@@ -1,32 +1,9 @@
 """
 backend/main.py
-
-rodar:
-
-uvicorn app.llm_router.main:app --reload --port 8000
-───────────────────────────────────────────────────────────────────────────────
-Servidor FastAPI — protocolo LangGraph Server.
-
-CORREÇÕES desta versão:
-  ✅ provider_name não é mais sobrescrito (bug de shadowing removido)
-  ✅ provider_name lido do body PRIMEIRO, com fallback para metadata da thread
-  ✅ Fallback hardcoded "Grok" removido — lança erro claro se não vier provider
-  ✅ logger.error/exception adicionados dentro do event_stream (antes silencioso)
-  ✅ persist() só salva provider_name na thread após resposta bem-sucedida
-  ✅ Rota /runs/stream duplicada removida
-  ✅ POST /threads adicionado
-  ✅ Ordem das rotas corrigida
-  ✅ Persistência em JSON
-  ✅ Auth por API key opcional
-  ✅ CORS restrito a ALLOWED_ORIGINS
-
 Iniciar:
     API_KEY=minha_chave_secreta uvicorn backend.main:app --reload --port 8000
 
-.env (opcional):
-    API_KEY=minha_chave_secreta
-    ALLOWED_ORIGINS=http://localhost:3000
-───────────────────────────────────────────────────────────────────────────────
+
 """
 
 
@@ -51,7 +28,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from app.llm_router.ai_router import ai_router  # noqa: E402
+from engine.ai_router import ai_router  # noqa: E402
 
 # ─── Persistência JSON ────────────────────────────────────────────────────────
 DB_FILE = Path(os.getenv("DB_FILE", "threads_db.json"))
@@ -102,7 +79,7 @@ async def verify_key(key: Optional[str] = Depends(_api_key_header)) -> None:
 _ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
 app = FastAPI(title="llm_router API", version="2.1.0")
-app.add_middleware(
+add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _ALLOWED_ORIGINS],
     allow_credentials=True,
@@ -163,7 +140,7 @@ def _new_thread(thread_id: str, assistant_id: str, extra_metadata: Dict = {}) ->
 
 # ─── /info ────────────────────────────────────────────────────────────────────
 
-@app.get("/info")
+@get("/info")
 def info():
     provider_names = [p.name for p in ai_router.providers] if ai_router else []
     return {
@@ -175,7 +152,7 @@ def info():
 
 # ─── Threads ──────────────────────────────────────────────────────────────────
 
-@app.post("/threads", dependencies=[Depends(verify_key)])
+@post("/threads", dependencies=[Depends(verify_key)])
 async def create_thread(request: Request):
     body: Dict = {}
     try:
@@ -194,7 +171,7 @@ async def create_thread(request: Request):
     return thread
 
 
-@app.post("/threads/search", dependencies=[Depends(verify_key)])
+@post("/threads/search", dependencies=[Depends(verify_key)])
 async def search_threads(request: Request):
     body: Dict = {}
     try:
@@ -218,21 +195,21 @@ async def search_threads(request: Request):
     return results[:limit]
 
 
-@app.get("/threads/{thread_id}", dependencies=[Depends(verify_key)])
+@get("/threads/{thread_id}", dependencies=[Depends(verify_key)])
 def get_thread(thread_id: str):
     if thread_id not in threads_db:
         raise HTTPException(status_code=404, detail="Thread não encontrada.")
     return threads_db[thread_id]
 
 
-@app.delete("/threads/{thread_id}", dependencies=[Depends(verify_key)])
+@delete("/threads/{thread_id}", dependencies=[Depends(verify_key)])
 def delete_thread(thread_id: str):
     threads_db.pop(thread_id, None)
     persist()
     return {"ok": True}
 
 
-@app.get("/threads/{thread_id}/history", dependencies=[Depends(verify_key)])
+@get("/threads/{thread_id}/history", dependencies=[Depends(verify_key)])
 def thread_history(thread_id: str):
     if thread_id not in threads_db:
         return []
@@ -260,7 +237,7 @@ def thread_history(thread_id: str):
 
 # ─── Stream ───────────────────────────────────────────────────────────────────
 
-@app.post("/threads/{thread_id}/runs/stream", dependencies=[Depends(verify_key)])
+@post("/threads/{thread_id}/runs/stream", dependencies=[Depends(verify_key)])
 async def stream_run(thread_id: str, request: Request):
     body = await request.json()
 

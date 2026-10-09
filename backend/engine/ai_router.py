@@ -22,13 +22,13 @@ from functools import partial
 from typing import Optional
 
 from dotenv import load_dotenv
-from app.llm_router.ai_core import AIProvider, ProviderManager
-from app.llm_router.ai_builders import (
+from engine.ai_core import AIProvider, ProviderManager
+from engine.ai_builders import (
     build_openai_compatible,
     build_grok_with_search,
     build_google_ai_studio,
 )
-from app.llm_router.ai_parsers import (
+from engine.ai_parsers import (
     parse_google_ai_response,
     parse_json_text_response,
     parse_grok_response,

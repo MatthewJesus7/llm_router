@@ -43,7 +43,7 @@ def _classify_http_error(status: int, body: str) -> str:
     if status == 503:
         return f"SERVICE_UNAVAILABLE (503) — provider fora do ar ou sobrecarregado: {body[:200]}"
     if status == 529:
-        return f"OVERLOADED (529) — provider com alta demanda (código não-padrão xAI/Anthropic): {body[:200]}"
+        return f"OVERLOADED (529) — provider com alta demanda (código não-padrão): {body[:200]}"
     return f"HTTP_{status}: {body[:300]}"
 
 

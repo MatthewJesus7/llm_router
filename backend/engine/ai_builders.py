@@ -48,22 +48,6 @@ def build_grok_with_search(
     excluded_domains: list[str] | None = None,
     allowed_x_handles: list[str] | None = None,
 ) -> Dict[str, Any]:
-    """
-    Builder para Grok via Responses API (/v1/responses).
-
-    ⚠️  IMPORTANTE — diferenças em relação ao chat/completions:
-      - Endpoint : https://api.x.ai/v1/responses   (configurado no router)
-      - Chave    : "input"  (não "messages")
-      - search   : "web_search" / "x_search" são server-side tools
-                   e SÓ funcionam neste endpoint (doc oficial xAI)
-
-    Parâmetros
-    ----------
-    search_type      : "web_search" (web geral) ou "x_search" (posts do X)
-    allowed_domains  : domínios permitidos para web_search
-    excluded_domains : domínios bloqueados para web_search
-    allowed_x_handles: @handles permitidos para x_search
-    """
     max_tokens = int(os.getenv(max_tokens_env, str(default_max_tokens)))
 
     tool: Dict[str, Any] = {"type": search_type}
