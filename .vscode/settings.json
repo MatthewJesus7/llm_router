@@ -1,0 +1,27 @@
+{
+    "files.exclude": {
+      "**/.git": true,
+      "**/.github": true,
+      "**/.DS_Store": true,
+      "**/.dockerignore": true,
+      "**/.env.example": true,
+      "**/.eslintignore": true,
+      "**/.eslintrc.cjs": true,
+      "**/.gitattributes": true,
+      "**/.gitignore": true,
+      "**/.npmrc": true,
+      "**/.pre-commit-config.yaml": true,
+      "**/.prettierignore": true,
+      "**/.prettierrc": true,
+      "**/_archive": true,
+      "**/package-lock.json": true,
+      "**/i18next-parser.config.ts": true,
+      "**/postcss.config.js": true,
+      "**/svelte.config.js": true,
+      "**/tailwind.config.js": true,
+      "**/tsconfig.json": true,
+      "**/vite.config.ts": true,
+      "**/Makefile": true,
+      "**/node_modules": true
+    }
+  }
