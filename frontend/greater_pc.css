@@ -1,0 +1,32 @@
+/* ==========================================================================
+   BLOCO 1: ANIMAÇÕES E TRANSIÇÕES PESADAS (Apague para testar)
+   Exige cálculo de keyframes e interpoladores de layout a cada frame.
+   ========================================================================== */
+   .msg { animation: pop .35s cubic-bezier(.21,1.02,.73,1) both; }
+   @keyframes pop { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+   .icon-btn, .chip, .composer { transition: all .2s ease; }
+   
+   
+   /* ==========================================================================
+      BLOCO 2: SOMBRAS COMPLEXAS / BOX-SHADOW (Apague para testar)
+      Força o motor gráfico a rasterizar desfoques vetoriais nas bordas.
+      ========================================================================== */
+   .avatar-user { box-shadow: 0 4px 12px rgba(124,58,237,.4); }
+   .bubble-user { box-shadow: 0 6px 16px rgba(124,58,237,.3); }
+   .composer:focus-within { box-shadow: 0 0 0 3px rgba(99,102,241,.2); }
+   .toast { box-shadow: 0 8px 24px rgba(0,0,0,.8); }
+   
+   
+   /* ==========================================================================
+      BLOCO 3: FUNDO AURORA E BLUR DE BACKDROP (Apague para testar)
+      O maior assassino de performance em CPUs antigas (blur por hardware).
+      ========================================================================== */
+   .aurora{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+   .aurora::before,.aurora::after{content:'';position:absolute;width:50vw;height:50vw;border-radius:9999px;filter:blur(100px);opacity:.1}
+   .aurora::before{background:#4f46e5;top:-20vw;left:-10vw}
+   .aurora::after{background:#a855f7;bottom:-20vw;right:-10vw}
+   
+   .header, .pill, .icon-btn, .bubble-ai, .composer, .chip, .toast {
+       backdrop-filter: blur(10px);
+       -webkit-backdrop-filter: blur(10px);
+   }

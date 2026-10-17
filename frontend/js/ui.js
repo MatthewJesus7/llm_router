@@ -1,4 +1,4 @@
-// ui.js (Otimizado contra travamentos de CPU)
+// ui.js (Corrigido: funções de atualização unificadas para exibir o stream em tempo real sem sumir com nada)
 let renderedCount = 0;
 const inputEl = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
@@ -70,7 +70,6 @@ function resetSession() {
     showToast('Nova conversa iniciada', 'ok');
 }
 
-// Cria o elemento DOM de uma mensagem individual
 function createMessageElement(msg) {
     const isUser = msg.type === 'human';
     const textContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
@@ -92,7 +91,7 @@ function createMessageElement(msg) {
 
     if (isUser) {
         bubble.textContent = textContent;
-    } else if (textContent === '') {
+    } else if (!textContent || textContent === '') {
         bubble.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
     } else {
         bubble.innerHTML = marked.parse(textContent);
@@ -118,7 +117,6 @@ function createMessageElement(msg) {
     return row;
 }
 
-// Renderização inteligente: Só limpa se o chat esvaziou; caso contrário, adiciona incrementalmente
 function renderMessages() {
     if (messagesStore.length === 0) {
         renderedCount = 0;
@@ -141,12 +139,10 @@ function renderMessages() {
         return;
     }
 
-    // Se havia o estado vazio, removemos ele antes de injetar as mensagens reais
     if (renderedCount === 0) {
         chatEl.innerHTML = '';
     }
 
-    // Renderiza apenas as novas mensagens que entraram no array
     const fragment = document.createDocumentFragment();
     for (let i = renderedCount; i < messagesStore.length; i++) {
         fragment.appendChild(createMessageElement(messagesStore[i]));
@@ -157,20 +153,52 @@ function renderMessages() {
     }
 
     renderedCount = messagesStore.length;
-    chatEl.scrollTo({ top: chatEl.scrollHeight, behavior: isStreaming ? 'auto' : 'smooth' });
+    chatEl.scrollTop = chatEl.scrollHeight;
 }
 
-// Atualização cirúrgica focada apenas no último balão (usada durante o stream para zero lag)
-function updateLastMessage(content) {
+// Atualização rápida durante o streaming (usa textContent para garantir alta performance em CPU velha)
+function updateLastMessageFast(content) {
     if (messagesStore.length === 0) return;
     const lastMsg = messagesStore[messagesStore.length - 1];
     lastMsg.content = content;
 
     const bubble = document.getElementById(`bubble-${lastMsg.id}`);
     if (bubble) {
-        bubble.innerHTML = content === '' ? '<div class="typing"><span></span><span></span><span></span></div>' : marked.parse(content);
+        bubble.textContent = content;
+    } else {
+        // Se o elemento sumiu ou foi recriado, força re-renderização completa
+        renderMessages();
     }
-    chatEl.scrollTo({ top: chatEl.scrollHeight, behavior: 'auto' });
+
+    const isNearBottom = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 120;
+    if (isNearBottom) {
+        chatEl.scrollTop = chatEl.scrollHeight;
+    }
+}
+
+// Atualização final ou padrão com suporte completo a Marked.parse
+function updateLastMessage(content, isFinished = false) {
+    if (messagesStore.length === 0) return;
+    const lastMsg = messagesStore[messagesStore.length - 1];
+    lastMsg.content = content;
+
+    const bubble = document.getElementById(`bubble-${lastMsg.id}`);
+    if (bubble) {
+        if (!content || content === '') {
+            bubble.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+        } else if (isFinished) {
+            bubble.innerHTML = marked.parse(content);
+        } else {
+            bubble.textContent = content;
+        }
+    } else {
+        renderMessages();
+    }
+
+    const isNearBottom = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 120;
+    if (isNearBottom) {
+        chatEl.scrollTop = chatEl.scrollHeight;
+    }
 }
 
 function handleSendMessage(event) {

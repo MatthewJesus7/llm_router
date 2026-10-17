@@ -1,4 +1,4 @@
-// api.js (Corrigido para parser robusto de SSE e exibição garantida)
+// api.js (Transparente: entrega tudo cru e completo para o ui.js gerenciar)
 const BASE_URL = "http://localhost:8000";
 let currentThreadId = crypto.randomUUID();
 let messagesStore = [];
@@ -70,59 +70,43 @@ async function sendUserMessage(text) {
 
         const aiMsg = { id: crypto.randomUUID(), type: 'ai', content: '' };
         messagesStore.push(aiMsg);
-        renderMessages(); // Cria o balão inicial com o indicador de digitação
+        renderMessages();
 
-        let currentEvent = 'message';
+        let lastRenderTime = 0;
+        const RENDER_THROTTLE_MS = 16.6;
 
         while (true) {
             const { value, done } = await reader.read();
-            if (done) break;
+            
+            if (done) {
+                // Se sobrou algo no buffer no fechamento da conexão, processa à força
+                if (buffer.trim()) {
+                    processChunks(buffer, aiMsg);
+                }
+                break;
+            }
 
             buffer += decoder.decode(value, { stream: true });
             const events = buffer.split('\n\n');
-            buffer = events.pop(); // Mantém o evento incompleto no buffer
+            buffer = events.pop(); // Guarda o fragmento pendente
 
             for (const eventBlock of events) {
-                if (!eventBlock.trim()) continue;
+                processChunks(eventBlock, aiMsg);
+            }
 
-                let eventType = 'message';
-                let dataLines = [];
-
-                const lines = eventBlock.split('\n');
-                for (const line of lines) {
-                    if (line.startsWith('event:')) {
-                        eventType = line.substring(6).trim();
-                    } else if (line.startsWith('data:') || line.startsWith('data: ')) {
-                        // Captura o restante da linha independentemente de haver espaço extra
-                        const prefixLength = line.startsWith('data: ') ? 6 : 5;
-                        dataLines.push(line.substring(prefixLength));
-                    }
-                }
-
-                if (dataLines.length === 0) continue;
-                const dataPayload = dataLines.join('\n');
-
-                try {
-                    const parsedData = JSON.parse(dataPayload);
-
-                    if (eventType === 'messages/partial') {
-                        if (Array.isArray(parsedData) && parsedData.length > 0) {
-                            aiMsg.content = parsedData[0].content || '';
-                            updateLastMessage(aiMsg.content);
-                        }
-                    } else if (eventType === 'values') {
-                        if (parsedData.messages) {
-                            messagesStore = parsedData.messages;
-                            renderMessages();
-                        }
-                    } else if (eventType === 'error') {
-                        showToast('Erro: ' + (parsedData.error || JSON.stringify(parsedData)));
-                    }
-                } catch (parseErr) {
-                    console.error('Erro ao decodificar JSON do SSE:', parseErr, dataPayload);
+            // Throttle de UI leve para manter o FPS da CPU velha em pé
+            const now = performance.now();
+            if (now - lastRenderTime > RENDER_THROTTLE_MS) {
+                lastRenderTime = now;
+                if (typeof updateLastMessageFast === 'function') {
+                    updateLastMessageFast(aiMsg.content);
                 }
             }
         }
+
+        // Entrega final garantida e sem cortes ao ui.js
+        updateLastMessage(aiMsg.content, true);
+
     } catch (err) {
         showToast('Erro ao enviar mensagem: ' + err.message);
         const last = messagesStore[messagesStore.length - 1];
@@ -132,5 +116,53 @@ async function sendUserMessage(text) {
         }
     } finally {
         setStreamingState(false);
+    }
+}
+
+// Processador bruto de blocos SSE (Joga toda a responsabilidade de exibição para o ui.js)
+function processChunks(eventBlock, aiMsg) {
+    if (!eventBlock.trim()) return;
+
+    let eventType = 'message';
+    let dataLines = [];
+
+    const lines = eventBlock.split('\n');
+    for (const line of lines) {
+        if (line.startsWith('event:')) {
+            eventType = line.substring(6).trim();
+        } else if (line.startsWith('data:') || line.startsWith('data: ')) {
+            const prefixLength = line.startsWith('data: ') ? 6 : 5;
+            dataLines.push(line.substring(prefixLength));
+        }
+    }
+
+    if (dataLines.length === 0) return;
+    const dataPayload = dataLines.join('\n');
+
+    try {
+        const parsedData = JSON.parse(dataPayload);
+
+        if (eventType === 'messages/partial') {
+            if (Array.isArray(parsedData) && parsedData.length > 0) {
+                // Atribuição direta e sem filtros de tamanho
+                aiMsg.content = parsedData[0].content || '';
+            }
+        } else if (eventType === 'values') {
+            if (parsedData.messages) {
+                messagesStore = parsedData.messages;
+                if (messagesStore.length > 0) {
+                    const latest = messagesStore[messagesStore.length - 1];
+                    if (latest && latest.content) {
+                        aiMsg.content = latest.content;
+                    }
+                }
+                renderMessages();
+            }
+        } else if (eventType === 'error') {
+            showToast('Erro: ' + (parsedData.error || JSON.stringify(parsedData)));
+        }
+    } catch (parseErr) {
+        // Se der erro no JSON, joga no console mas não interrompe o fluxo bruto
+        console.warn('Payload parcial ignorado ou bruto:', dataPayload);
     }
 }

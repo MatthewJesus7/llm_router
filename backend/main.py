@@ -1,6 +1,6 @@
 # backend/main.py
 # ─────────────────────────────────────────────────────────────
-# Ponto de entrada da API FastAPI (Stateless & Privacy-First)
+# Ponto de entrada da API FastAPI (Stateless & Privacy-First com Auditoria)
 # ─────────────────────────────────────────────────────────────
 
 from __future__ import annotations
@@ -97,22 +97,23 @@ def info():
     }
 
 
-# ─── Endpoints: Stream (Stateless / Sem Persistência em Disco) ─────────────────
+# ─── Endpoints: Stream com Auditoria Total ───────────────────────────────────
 
 @app.post("/threads/{thread_id}/runs/stream")
 async def stream_run(thread_id: str, request: Request):
+    t_start_request = time.perf_counter()
     body = await request.json()
 
     provider_name: Optional[str] = body.get("provider_name")
+    input_data: Dict = body.get("input", {}) or {}
+    new_messages: List[Dict] = input_data.get("messages", [])
+    
+    logger.info(f"[{thread_id}] AUDIT REQ | payload_size={len(json.dumps(body))} bytes | msgs={len(new_messages)} | provider={provider_name}")
 
     if not provider_name:
         logger.error(f"[{thread_id}] provider_name ausente no body da requisição.")
 
-    input_data: Dict = body.get("input", {}) or {}
-    new_messages: List[Dict] = input_data.get("messages", [])
     prompt = _build_prompt(new_messages)
-
-    logger.info(f"[{thread_id}] stream iniciado | provider={provider_name} | msgs={len(new_messages)}")
 
     async def event_stream():
         run_id = str(uuid.uuid4())
@@ -126,6 +127,7 @@ async def stream_run(thread_id: str, request: Request):
 
         try:
             loop = asyncio.get_event_loop()
+            t_start_ai = time.perf_counter()
 
             try:
                 response: str = await loop.run_in_executor(
@@ -134,16 +136,20 @@ async def stream_run(thread_id: str, request: Request):
                 )
             except (ValueError, RuntimeError) as exc:
                 available = getattr(ai_router, "available_providers", lambda: [])()
-                logger.error(f"[{thread_id}] Falha no provider '{provider_name}': {exc}")
+                logger.error(f"[{thread_id}] AUDIT ERRO AI | tempo={(time.perf_counter() - t_start_ai):.3f}s | erro={exc}")
                 yield _sse("error", {
                     "error": str(exc),
                     "available_providers": available,
                 })
                 return
 
+            t_ai_duration = time.perf_counter() - t_start_ai
+            logger.info(f"[{thread_id}] AUDIT AI OK | tempo_resposta={t_ai_duration:.3f}s | chars={len(response)}")
+
             ai_msg_id = str(uuid.uuid4())
             accumulated = ""
 
+            t_start_stream = time.perf_counter()
             chunk_size = 6
             for i in range(0, len(response), chunk_size):
                 chunk = response[i: i + chunk_size]
@@ -151,15 +157,17 @@ async def stream_run(thread_id: str, request: Request):
                 yield _sse("messages/partial", [_ai_msg(ai_msg_id, accumulated)])
                 await asyncio.sleep(0.015)
 
+            t_stream_duration = time.perf_counter() - t_start_stream
+            t_total_duration = time.perf_counter() - t_start_request
+
+            logger.info(f"[{thread_id}] AUDIT SUMMARY | tempo_stream={t_stream_duration:.3f}s | tempo_total={t_total_duration:.3f}s | tokens~={len(response)}")
+
             final_msgs = new_messages + [_ai_msg(ai_msg_id, response)]
-
-            logger.info(f"[{thread_id}] resposta concluída | provider={provider_name} | tokens~={len(response)}")
-
             yield _sse("values", {"messages": final_msgs})
             yield _sse("end", "")
 
         except Exception as exc:
-            logger.exception(f"[{thread_id}] Erro inesperado no event_stream: {exc}")
+            logger.exception(f"[{thread_id}] AUDIT EXCEPTION: {exc}")
             yield _sse("error", {"error": str(exc)})
 
     return StreamingResponse(
