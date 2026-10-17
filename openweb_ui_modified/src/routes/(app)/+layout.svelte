@@ -195,9 +195,12 @@
 	};
 
 	const gotoAuth = async () => {
-		const currentUrl = `${$page.url.pathname}${$page.url.search}`;
-		await goto(`/auth?redirect=${encodeURIComponent(currentUrl)}`);
-	};
+			// Desativado temporariamente para evitar redirecionamentos indesejados no modo isolado.
+			// const currentUrl = `${$page.url.pathname}${$page.url.search}`;
+			// if (!currentUrl.includes('/auth')) {
+			//     await goto(`/auth?redirect=${encodeURIComponent(currentUrl)}`);
+			// }
+		};
 
 	const navigateChat = async (direction: -1 | 1) => {
 		if (!$chats?.length) return;
@@ -438,31 +441,32 @@
 {/if}
 
 {#if $user}
-	<div class="app relative">
-		<div
-			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-auto flex flex-row justify-end"
-		>
-			{#if !['user', 'admin'].includes($user?.role)}
-				<AccountPending />
-			{:else}
-				<Sidebar />
+    <div class="app relative">
+        <div
+            class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-auto flex flex-row justify-end"
+        >
+            {#if !['user', 'admin'].includes($user?.role)}
+                <AccountPending />
+            {:else}
+                <Sidebar />
 
-				{#if loaded}
-					<main id="main-content" class="contents">
-						<slot />
-					</main>
-				{:else}
-					<div
-						class="w-full flex-1 h-full flex items-center justify-center {$showSidebar
-							? '  md:max-w-[calc(100%-var(--sidebar-width))]'
-							: ' '}"
-					>
-						<Spinner className="size-5" />
-					</div>
-				{/if}
-			{/if}
-		</div>
-	</div>
+                <!-- Main content always renders; spinner becomes a floating notification/popup -->
+                <main id="main-content" class="contents">
+                    <slot />
+                </main>
+
+                {#if !loaded}
+                    <div
+                        class="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-xl rounded-xl text-sm"
+                        transition:fade={{ duration: 150 }}
+                    >
+                        <Spinner className="size-4" />
+                        <span class="text-gray-600 dark:text-gray-300 font-medium">Sincronizando com roteador multiagente...</span>
+                    </div>
+                {/if}
+            {/if}
+        </div>
+    </div>
 {/if}
 
 <style>

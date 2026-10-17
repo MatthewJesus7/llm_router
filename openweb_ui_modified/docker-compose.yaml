@@ -1,12 +1,14 @@
 services:
   ollama:
-    volumes:
-      - ollama:/root/.ollama
+    image: ollama/ollama:${OLLAMA_DOCKER_TAG-latest}
     container_name: ollama
     pull_policy: always
     tty: true
     restart: unless-stopped
-    image: ollama/ollama:${OLLAMA_DOCKER_TAG-latest}
+    volumes:
+      - ollama:/root/.ollama
+    profiles:
+      - optional  # <-- Torna este serviço opcional
 
   open-webui:
     build:

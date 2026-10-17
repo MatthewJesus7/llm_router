@@ -1313,8 +1313,8 @@
 				}
 			}
 		} else {
-			// Redirect to /error when Backend Not Detected
-			await goto(`/error`);
+			// Redirect to /error when Backend Not Detected - redirecionar pro erro quando backend não for detectado
+			console.warn('Backend não detectado. Rodando em modo frontend isolado.');
 		}
 
 		await tick();
