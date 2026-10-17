@@ -8,7 +8,6 @@
       "**/.eslintignore": true,
       "**/.eslintrc.cjs": true,
       "**/.gitattributes": true,
-      "**/.gitignore": true,
       "**/.npmrc": true,
       "**/.pre-commit-config.yaml": true,
       "**/.prettierignore": true,
@@ -23,6 +22,7 @@
       "**/Makefile": true,
       "**/node_modules": true,
 
+      // "**/.gitignore": true,
       // "**/_archive": true,
     }
   }

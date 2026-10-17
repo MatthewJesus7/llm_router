@@ -1,11 +1,7 @@
-"""
-backend/main.py
-Iniciar:
-    API_KEY=minha_chave_secreta uvicorn backend.main:app --reload --port 8000
-
-
-"""
-
+# backend/main.py
+# ─────────────────────────────────────────────────────────────
+# Ponto de entrada da API FastAPI (Stateless & Privacy-First)
+# ─────────────────────────────────────────────────────────────
 
 from __future__ import annotations
 
@@ -17,11 +13,11 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import logging
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from fastapi.security import APIKeyHeader
 
 # ─── Project root ─────────────────────────────────────────────────────────────
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,62 +26,25 @@ if _PROJECT_ROOT not in sys.path:
 
 from engine.ai_router import ai_router  # noqa: E402
 
-# ─── Persistência JSON ────────────────────────────────────────────────────────
-DB_FILE = Path(os.getenv("DB_FILE", "threads_db.json"))
-
-
-def _load_db() -> Dict[str, Any]:
-    if DB_FILE.exists():
-        try:
-            return json.loads(DB_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {}
-
-
-def _save_db(data: Dict[str, Any]) -> None:
-    DB_FILE.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-
-
-threads_db: Dict[str, Dict[str, Any]] = _load_db()
-
-
-def persist() -> None:
-    """Salva estado em disco. Chame após qualquer mutação."""
-    _save_db(threads_db)
-
-
-# ─── Segurança ────────────────────────────────────────────────────────────────
-API_KEY: Optional[str] = os.getenv("API_KEY")
-_api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
-
-import logging
-
+# ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 logger = logging.getLogger("main")
 
-
-async def verify_key(key: Optional[str] = Depends(_api_key_header)) -> None:
-    if API_KEY and key != API_KEY:
-        raise HTTPException(status_code=401, detail="API key inválida ou ausente.")
-
-
-# ─── CORS ─────────────────────────────────────────────────────────────────────
-_ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
-
+# ─── App Initialization & CORS ──────────────────────────────────────────────
 app = FastAPI(title="llm_router API", version="2.1.0")
-add_middleware(
+
+_ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _ALLOWED_ORIGINS],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -126,21 +85,9 @@ def _build_prompt(messages: List[Dict]) -> str:
     return "\n\n".join(parts)
 
 
-def _new_thread(thread_id: str, assistant_id: str, extra_metadata: Dict = {}) -> Dict:
-    now = time.time()
-    return {
-        "thread_id": thread_id,
-        "created_at": now,
-        "updated_at": now,
-        "metadata": {"assistant_id": assistant_id, **extra_metadata},
-        "values": {"messages": []},
-        "status": "idle",
-    }
+# ─── Endpoints: /info ─────────────────────────────────────────────────────────
 
-
-# ─── /info ────────────────────────────────────────────────────────────────────
-
-@get("/info")
+@app.get("/info")
 def info():
     provider_names = [p.name for p in ai_router.providers] if ai_router else []
     return {
@@ -150,126 +97,22 @@ def info():
     }
 
 
-# ─── Threads ──────────────────────────────────────────────────────────────────
+# ─── Endpoints: Stream (Stateless / Sem Persistência em Disco) ─────────────────
 
-@post("/threads", dependencies=[Depends(verify_key)])
-async def create_thread(request: Request):
-    body: Dict = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-
-    thread_id = str(uuid.uuid4())
-    metadata: Dict = body.get("metadata", {})
-    assistant_id = metadata.get("assistant_id", "agent")
-
-    thread = _new_thread(thread_id, assistant_id, metadata)
-    threads_db[thread_id] = thread
-    persist()
-    logger.info(f"Thread criada: {thread_id}")
-    return thread
-
-
-@post("/threads/search", dependencies=[Depends(verify_key)])
-async def search_threads(request: Request):
-    body: Dict = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-
-    limit: int = body.get("limit", 100)
-    metadata_filter: Dict = body.get("metadata", {})
-
-    results = list(threads_db.values())
-    if metadata_filter:
-        results = [
-            t for t in results
-            if all(
-                t.get("metadata", {}).get(k) == v
-                for k, v in metadata_filter.items()
-            )
-        ]
-    results.sort(key=lambda t: t.get("updated_at", 0), reverse=True)
-    return results[:limit]
-
-
-@get("/threads/{thread_id}", dependencies=[Depends(verify_key)])
-def get_thread(thread_id: str):
-    if thread_id not in threads_db:
-        raise HTTPException(status_code=404, detail="Thread não encontrada.")
-    return threads_db[thread_id]
-
-
-@delete("/threads/{thread_id}", dependencies=[Depends(verify_key)])
-def delete_thread(thread_id: str):
-    threads_db.pop(thread_id, None)
-    persist()
-    return {"ok": True}
-
-
-@get("/threads/{thread_id}/history", dependencies=[Depends(verify_key)])
-def thread_history(thread_id: str):
-    if thread_id not in threads_db:
-        return []
-    thread = threads_db[thread_id]
-    messages = thread["values"].get("messages", [])
-    if not messages:
-        return []
-
-    ts = thread.get("updated_at", time.time())
-    return [
-        {
-            "values": {"messages": messages},
-            "next": [],
-            "tasks": [],
-            "checkpoint": {
-                "ts": str(ts),
-                "id": str(uuid.uuid4()),
-                "channel_values": {"messages": messages},
-            },
-            "metadata": {"step": len(messages), "source": "loop"},
-            "parent_checkpoint": None,
-        }
-    ]
-
-
-# ─── Stream ───────────────────────────────────────────────────────────────────
-
-@post("/threads/{thread_id}/runs/stream", dependencies=[Depends(verify_key)])
+@app.post("/threads/{thread_id}/runs/stream")
 async def stream_run(thread_id: str, request: Request):
     body = await request.json()
 
-    # Garante que a thread existe
-    if thread_id not in threads_db:
-        config = body.get("config", {})
-        configurable = config.get("configurable", {})
-        assistant_id = configurable.get("assistant_id", "agent")
-        threads_db[thread_id] = _new_thread(thread_id, assistant_id)
-
-    thread = threads_db[thread_id]
-
-    # ── Resolução do provider_name ─────────────────────────────────────────
-    # Prioridade: body > metadata da thread
-    # Sem fallback hardcoded — se não vier, retorna erro claro ao frontend.
-    provider_name: Optional[str] = (
-        body.get("provider_name")
-        or thread.get("metadata", {}).get("provider_name")
-    )
+    provider_name: Optional[str] = body.get("provider_name")
 
     if not provider_name:
-        logger.error(
-            f"[{thread_id}] provider_name ausente — nem no body nem na metadata da thread."
-        )
+        logger.error(f"[{thread_id}] provider_name ausente no body da requisição.")
 
-    # Junta mensagens existentes com as novas
     input_data: Dict = body.get("input", {}) or {}
     new_messages: List[Dict] = input_data.get("messages", [])
-    all_messages = new_messages
-    prompt = _build_prompt(all_messages)
+    prompt = _build_prompt(new_messages)
 
-    logger.info(f"[{thread_id}] stream iniciado | provider={provider_name} | msgs={len(all_messages)}")
+    logger.info(f"[{thread_id}] stream iniciado | provider={provider_name} | msgs={len(new_messages)}")
 
     async def event_stream():
         run_id = str(uuid.uuid4())
@@ -277,7 +120,7 @@ async def stream_run(thread_id: str, request: Request):
 
         if not provider_name:
             yield _sse("error", {
-                "error": "provider_name não foi enviado. Inclua 'provider_name' no body da requisição ou na metadata da thread.",
+                "error": "provider_name não foi enviado. Inclua 'provider_name' no body da requisição.",
             })
             return
 
@@ -308,14 +151,7 @@ async def stream_run(thread_id: str, request: Request):
                 yield _sse("messages/partial", [_ai_msg(ai_msg_id, accumulated)])
                 await asyncio.sleep(0.015)
 
-            # Persiste estado final apenas após sucesso
-            final_msgs = all_messages + [_ai_msg(ai_msg_id, response)]
-            thread["values"]["messages"] = final_msgs
-            thread["updated_at"] = time.time()
-            thread["status"] = "idle"
-            # Salva o provider que funcionou na metadata da thread
-            thread["metadata"]["provider_name"] = provider_name
-            persist()
+            final_msgs = new_messages + [_ai_msg(ai_msg_id, response)]
 
             logger.info(f"[{thread_id}] resposta concluída | provider={provider_name} | tokens~={len(response)}")
 
@@ -335,3 +171,8 @@ async def stream_run(thread_id: str, request: Request):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

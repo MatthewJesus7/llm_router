@@ -3,286 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat IA</title>
+    <meta name="theme-color" content="#0a0a10">
+    <title>Assistente IA</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #4b5563; }
-        .markdown-body p { margin-bottom: 0.75rem; }
-        .markdown-body p:last-child { margin-bottom: 0; }
-        .markdown-body pre { background: #111827; padding: 1rem; border-radius: 0.5rem; margin: 0.75rem 0; overflow-x: auto; border: 1px #374151; }
-        .markdown-body code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.875rem; color: #93c5fd; }
-        .markdown-body pre code { color: #e5e7eb; }
-        .markdown-body ul, .markdown-body ol { padding-left: 1.5rem; margin-bottom: 0.75rem; }
-        .markdown-body ul { list-style-type: disc; }
-        .markdown-body ol { list-style-type: decimal; }
-    </style>
+  
+    <link rel="stylesheet" href="style.css">
 </head>
-<body class="h-full bg-gray-950 text-gray-100 flex flex-col antialiased selection:bg-blue-600 selection:text-white">
+<body class="h-full text-zinc-100 flex flex-col antialiased overflow-hidden">
 
-    <!-- HEADER LIMPO E MODERNO -->
-    <header class="bg-gray-900/80 backdrop-blur-md border-b border-gray-800/80 px-6 py-3.5 flex items-center justify-between shrink-0 z-10">
-        <div class="flex items-center space-x-3">
-            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                <i class="fa-solid fa-sparkles text-white text-sm"></i>
-            </div>
-            <div>
-                <h1 class="font-semibold text-sm tracking-tight text-gray-200">Assistente IA</h1>
-                <div class="flex items-center space-x-1.5 mt-0.5">
-                    <span id="connection-dot" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                    <span id="connection-text" class="text-[11px] text-gray-400 font-medium">Conectando...</span>
-                </div>
+<div class="aurora"></div>
+<div id="toast"></div>
+
+<!-- HEADER -->
+<header class="header relative z-10 shrink-0 px-4 sm:px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-violet-600 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-600/30">
+            <i class="fa-solid fa-wand-magic-sparkles text-white text-sm"></i>
+        </div>
+        <div>
+            <h1 class="font-semibold text-[15px] tracking-tight text-white leading-none">Assistente IA</h1>
+            <div class="flex items-center gap-2 mt-1.5">
+                <span id="connection-dot" class="status-dot wait"></span>
+                <span id="connection-text" class="text-[11px] text-zinc-500 font-medium">Conectando...</span>
             </div>
         </div>
+    </div>
 
-        <div class="flex items-center space-x-3">
-            <div class="hidden sm:flex items-center space-x-2 bg-gray-800/60 border border-gray-700/60 rounded-lg px-3 py-1.5">
-                <i class="fa-solid fa-microchip text-xs text-gray-400"></i>
-                <select id="provider-select" class="bg-transparent text-xs text-gray-200 focus:outline-none cursor-pointer pr-2">
-                    <option value="" class="bg-gray-900">Carregando...</option>
-                </select>
+    <div class="flex items-center gap-2.5">
+        <div class="hidden sm:flex pill">
+            <i class="fa-solid fa-microchip text-[11px] text-indigo-300"></i>
+            <select id="provider-select">
+                <option value="">Carregando...</option>
+            </select>
+            <i class="fa-solid fa-chevron-down text-[9px] text-zinc-500"></i>
+        </div>
+        <button onclick="resetSession()" title="Nova conversa" class="group icon-btn">
+            <i class="fa-solid fa-rotate-right text-xs transition-transform duration-500 group-hover:rotate-[180deg]"></i>
+        </button>
+    </div>
+</header>
+
+<!-- ÁREA PRINCIPAL -->
+<main class="relative z-10 flex-1 flex flex-col overflow-hidden">
+
+    <!-- FEED DE MENSAGENS -->
+    <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-6 space-y-5 custom-scrollbar">
+        <div class="flex flex-col items-center justify-center h-full text-center px-4 fade-in">
+            <div class="relative mb-5">
+                <div class="absolute -inset-3 rounded-[28px] bg-gradient-to-tr from-indigo-600/40 to-fuchsia-600/40 blur-2xl"></div>
+                <div class="relative w-16 h-16 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center">
+                    <i class="fa-solid fa-wand-magic-sparkles text-xl bg-gradient-to-tr from-indigo-300 to-fuchsia-300 bg-clip-text text-transparent"></i>
+                </div>
             </div>
-            <button onclick="initOrResetSession(true)" title="Limpar conversa" class="w-9 h-9 rounded-lg bg-gray-800/60 hover:bg-gray-800 border border-gray-700/60 text-gray-300 hover:text-white flex items-center justify-center transition">
-                <i class="fa-solid fa-rotate-right text-xs"></i>
+            <h2 class="text-xl font-bold tracking-tight text-white">Como posso ajudar?</h2>
+            <p class="text-sm text-zinc-500 mt-2 max-w-sm leading-relaxed">Envie uma mensagem para conversar com o modelo configurado no seu backend.</p>
+            <div class="flex flex-wrap justify-center gap-2.5 mt-7 max-w-md">
+                <button class="chip" data-p="Explique de forma simples como funciona uma rede neural." onclick="usePrompt(this.dataset.p)"><i class="fa-solid fa-brain"></i>Explicar um conceito</button>
+                <button class="chip" data-p="Me ajude a escrever um e-mail profissional e objetivo." onclick="usePrompt(this.dataset.p)"><i class="fa-solid fa-paper-plane"></i>Escrever um e-mail</button>
+                <button class="chip" data-p="Faça um brainstorm com 10 ideias criativas para um projeto pessoal." onclick="usePrompt(this.dataset.p)"><i class="fa-solid fa-lightbulb"></i>Brainstorm de ideias</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- INPUT FIXO NA BASE -->
+    <div class="shrink-0 px-4 pb-4 pt-1 relative">
+        <div class="fade-bottom"></div>
+        <!-- Removido o onsubmit inline incorreto; o ui.js agora gerencia via addEventListener -->
+        <form id="chat-form" class="composer relative flex items-center max-w-3xl mx-auto">
+            <textarea id="user-input" rows="1" placeholder="Envie uma mensagem..." class="custom-scrollbar"
+                onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.getElementById('chat-form').requestSubmit(); }"
+                oninput="autoResize(this)"></textarea>
+            <button type="submit" id="send-btn" disabled class="send-btn absolute right-2 bottom-2 w-9 h-9 rounded-xl flex items-center justify-center text-white">
+                <i class="fa-solid fa-arrow-up text-xs"></i>
             </button>
-        </div>
-    </header>
+        </form>
+        <p class="text-center mt-2.5 text-[11px] text-zinc-600 relative"><kbd>Enter</kbd> enviar &nbsp;·&nbsp; <kbd>Shift</kbd> + <kbd>Enter</kbd> nova linha</p>
+    </div>
+</main>
 
-    <!-- ÁREA PRINCIPAL DO CHAT -->
-    <main class="flex-1 flex flex-col bg-gray-950 overflow-hidden relative">
-        
-        <!-- FEED DE MENSAGENS -->
-        <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-6 space-y-6 custom-scrollbar">
-            <div class="flex flex-col items-center justify-center h-full text-center px-4">
-                <div class="w-12 h-12 rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center text-gray-400 mb-3 shadow-inner">
-                    <i class="fa-solid fa-comments text-lg"></i>
-                </div>
-                <h2 class="text-sm font-medium text-gray-300">Inicie uma conversa</h2>
-                <p class="text-xs text-gray-500 mt-1 max-w-sm">Envie uma mensagem abaixo para começar a interagir com o modelo configurado no backend.</p>
-            </div>
-        </div>
+<!-- SCRIPTS SEPARADOS -->
+<script src="js/api.js"></script>
+<script src="js/ui.js"></script>
 
-        <!-- INPUT FIXO NA BASE -->
-        <div class="p-4 bg-gradient-to-t from-gray-950 via-gray-950/90 to-transparent shrink-0">
-            <form id="chat-form" onsubmit="sendMessage(event)" class="max-w-3xl mx-auto relative flex items-center">
-                <textarea id="user-input" rows="1" placeholder="Envie uma mensagem..." 
-                    class="w-full bg-gray-900/90 border border-gray-800 focus:border-blue-500/80 rounded-2xl pl-4 pr-12 py-3.5 text-sm text-gray-100 placeholder-gray-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-lg transition"
-                    onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.getElementById('chat-form').requestSubmit(); }"
-                    oninput="autoResize(this)"></textarea>
-                <button type="submit" id="send-btn" disabled class="absolute right-2.5 bottom-2.5 w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 text-white flex items-center justify-center transition shadow-md shadow-blue-600/20">
-                    <i class="fa-solid fa-arrow-up text-xs"></i>
-                </button>
-            </form>
-            <div class="text-center mt-2">
-                <span class="text-[10px] text-gray-600">Pressione Enter para enviar, Shift + Enter para quebra de linha.</span>
-            </div>
-        </div>
-    </main>
-
-    <!-- SCRIPT DE CONTROLE -->
-    <script>
-        const BASE_URL = "http://localhost:8000";
-        let currentThreadId = null;
-        let messagesStore = [];
-
-        const inputEl = document.getElementById('user-input');
-        const sendBtn = document.getElementById('send-btn');
-
-        inputEl.addEventListener('input', () => {
-            sendBtn.disabled = inputEl.value.trim() === '';
-        });
-
-        function autoResize(textarea) {
-            textarea.style.height = 'auto';
-            textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
-        }
-
-        async function initOrResetSession(forceNew = false) {
-            const dotEl = document.getElementById('connection-dot');
-            const textEl = document.getElementById('connection-text');
-            const selectEl = document.getElementById('provider-select');
-
-            try {
-                // 1. Verifica conexão e provedores
-                const infoRes = await fetch(`${BASE_URL}/info`);
-                if (!infoRes.ok) throw new Error('Falha ao conectar');
-                const infoData = await infoRes.json();
-
-                dotEl.className = 'w-2 h-2 rounded-full bg-emerald-500';
-                textEl.textContent = 'Conectado';
-
-                selectEl.innerHTML = '';
-                if (infoData.providers && infoData.providers.length > 0) {
-                    infoData.providers.forEach(p => {
-                        const opt = document.createElement('option');
-                        opt.value = p;
-                        opt.textContent = p;
-                        opt.className = 'bg-gray-900 text-gray-200';
-                        selectEl.appendChild(opt);
-                    });
-                } else {
-                    selectEl.innerHTML = '<option value="">Padrão do sistema</option>';
-                }
-
-                // 2. Criação automática da thread única na sessão
-                if (!currentThreadId || forceNew) {
-                    const provider = selectEl.value;
-                    const threadRes = await fetch(`${BASE_URL}/threads`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ metadata: { provider_name: provider } })
-                    });
-                    if (!threadRes.ok) throw new Error('Erro ao criar thread');
-                    const threadData = await threadRes.json();
-                    currentThreadId = threadData.thread_id;
-                    messagesStore = [];
-                    renderMessages();
-                }
-            } catch (err) {
-                dotEl.className = 'w-2 h-2 rounded-full bg-red-500';
-                textEl.textContent = 'Desconectado';
-                console.error(err);
-            }
-        }
-
-        function renderMessages() {
-            const chatEl = document.getElementById('chat-messages');
-            
-            if (messagesStore.length === 0) {
-                chatEl.innerHTML = `
-                    <div class="flex flex-col items-center justify-center h-full text-center px-4">
-                        <div class="w-12 h-12 rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center text-gray-400 mb-3 shadow-inner">
-                            <i class="fa-solid fa-comments text-lg"></i>
-                        </div>
-                        <h2 class="text-sm font-medium text-gray-300">Inicie uma conversa</h2>
-                        <p class="text-xs text-gray-500 mt-1 max-w-sm">Envie uma mensagem abaixo para começar a interagir com o modelo configurado no backend.</p>
-                    </div>
-                `;
-                return;
-            }
-
-            chatEl.innerHTML = '';
-            messagesStore.forEach(msg => {
-                const isUser = msg.type === 'human';
-                const wrapper = document.createElement('div');
-                wrapper.className = `flex items-start space-x-3 max-w-3xl mx-auto w-full ${isUser ? 'justify-end' : 'justify-start'}`;
-
-                const avatar = document.createElement('div');
-                avatar.className = `w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-xs ${isUser ? 'bg-blue-600 text-white order-2 ml-3' : 'bg-gray-800 border border-gray-700 text-gray-300 order-1 mr-3'}`;
-                avatar.innerHTML = isUser ? '<i class="fa-solid fa-user text-[10px]"></i>' : '<i class="fa-solid fa-sparkles text-[10px]"></i>';
-
-                const contentDiv = document.createElement('div');
-                contentDiv.className = `flex flex-col ${isUser ? 'order-1 items-end' : 'order-2 items-start'} max-w-[80%]`;
-
-                const bubble = document.createElement('div');
-                bubble.className = `rounded-2xl px-4 py-3 text-sm leading-relaxed markdown-body shadow-sm ${isUser ? 'bg-blue-600 text-white rounded-tr-sm' : 'bg-gray-900 border border-gray-800/80 text-gray-100 rounded-tl-sm'}`;
-                
-                const textContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-                if (isUser) {
-                    bubble.textContent = textContent;
-                } else {
-                    bubble.innerHTML = marked.parse(textContent);
-                }
-
-                contentDiv.appendChild(bubble);
-                wrapper.appendChild(avatar);
-                wrapper.appendChild(contentDiv);
-                chatEl.appendChild(wrapper);
-            });
-
-            chatEl.scrollTo({ top: chatEl.scrollHeight, behavior: 'smooth' });
-        }
-
-        async function sendMessage(event) {
-            event.preventDefault();
-            if (!currentThreadId) return;
-
-            const text = inputEl.value.trim();
-            if (!text) return;
-
-            inputEl.value = '';
-            inputEl.style.height = 'auto';
-            sendBtn.disabled = true;
-
-            const userMsg = { id: crypto.randomUUID(), type: 'human', content: text };
-            messagesStore.push(userMsg);
-            renderMessages();
-
-            const provider = document.getElementById('provider-select').value;
-
-            try {
-                const response = await fetch(`${BASE_URL}/threads/${currentThreadId}/runs/stream`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        provider_name: provider,
-                        input: { messages: messagesStore }
-                    })
-                });
-
-                if (!response.ok) {
-                    const errJson = await response.json().catch(() => ({}));
-                    throw new Error(errJson.detail || 'Erro na comunicação com o servidor');
-                }
-
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-
-                const aiMsgId = crypto.randomUUID();
-                const aiMsg = { id: aiMsgId, type: 'ai', content: '' };
-                messagesStore.push(aiMsg);
-                renderMessages();
-
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop();
-
-                    let currentEventType = 'message';
-                    for (let line of lines) {
-                        if (line.startsWith('event: ')) {
-                            currentEventType = line.substring(7).trim();
-                        } else if (line.startsWith('data: ')) {
-                            const rawData = line.substring(6).trim();
-                            if (currentEventType === 'messages/partial') {
-                                const partialList = JSON.parse(rawData);
-                                if (partialList.length > 0) {
-                                    aiMsg.content = partialList[0].content;
-                                    renderMessages();
-                                }
-                            } else if (currentEventType === 'values') {
-                                const val = JSON.parse(rawData);
-                                if (val.messages) {
-                                    messagesStore = val.messages;
-                                    renderMessages();
-                                }
-                            } else if (currentEventType === 'error') {
-                                const errObj = JSON.parse(rawData);
-                                alert('Erro: ' + (errObj.error || JSON.stringify(errObj)));
-                            }
-                        }
-                    }
-                }
-            } catch (err) {
-                alert('Erro ao enviar mensagem: ' + err.message);
-            } finally {
-                sendBtn.disabled = inputEl.value.trim() === '';
-            }
-        }
-
-        window.onload = () => {
-            initOrResetSession();
-        };
-    </script>
 </body>
 </html>
