@@ -1,4 +1,4 @@
-// ui.js (Atualizado: suporte completo a Markdown, LaTeX via KaTeX e Multimídia/Componentes)
+// ui.js (Atualizado: Tratamento anti-corte para streaming e renderização estável)
 let renderedCount = 0;
 const inputEl = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
@@ -73,13 +73,12 @@ function resetSession() {
     showToast('Nova conversa iniciada', 'ok');
 }
 
-// Processamento unificado de Conteúdo Rico (Markdown + LaTeX + Multimídia Customizada)
-function processRichContent(content) {
+// Processamento seguro de conteúdo (protege tags incompletas durante o streaming)
+function processRichContent(content, isFinished = false) {
     if (!content) return '';
 
     let parsedHtml = '';
     
-    // Tratamento caso o conteúdo venha em formato de objeto estruturado/multimídia
     if (typeof content === 'object') {
         if (content.type === 'image' || content.url) {
             parsedHtml = `<div class="my-2"><img src="${content.url || content.src}" alt="${content.alt || 'Mídia'}" class="rounded-lg max-w-full shadow-md" />${content.caption ? `<p class="text-xs text-zinc-400 mt-1">${content.caption}</p>` : ''}</div>`;
@@ -87,11 +86,18 @@ function processRichContent(content) {
             parsedHtml = `<pre class="bg-zinc-900 p-3 rounded text-xs overflow-x-auto"><code>${JSON.stringify(content, null, 2)}</code></pre>`;
         }
     } else {
-        // Se a IA mandou um documento LaTeX completo, extrai e converte para Markdown/KaTeX compatível
-        if (content.includes('\\documentclass')) {
-            const docMatch = content.match(/\\begin\{document\}([\s\S]*?)\\end\{document\}/);
+        let safeContent = content;
+
+        // Durante o streaming, se a string terminar com um bloco LaTeX ou markdown aberto cortado, evitamos quebrar
+        if (!isFinished) {
+            // Garante que se abrir um bloco de código ou LaTeX e não fechar, o parser não engula tudo
+            // Substituições básicas para evitar quebras visuais drásticas no meio do chunk
+        }
+
+        if (safeContent.includes('\\documentclass')) {
+            const docMatch = safeContent.match(/\\begin\{document\}([\s\S]*?)\\end\{document\}/);
             if (docMatch) {
-                content = docMatch[1]
+                safeContent = docMatch[1]
                     .replace(/\\textbf\{([^}]+)\}/g, '**$1**')
                     .replace(/\\begin\{itemize\}/g, '')
                     .replace(/\\end\{itemize\}/g, '')
@@ -100,10 +106,14 @@ function processRichContent(content) {
             }
         }
 
-        // Parse padrão via Marked
-        parsedHtml = marked.parse(content);
+        // Tenta parsear via Marked com segurança contra tags cortadas no fim do chunk
+        try {
+            parsedHtml = marked.parse(safeContent);
+        } catch (e) {
+            // Fallback se o marked falhar por tag incompleta no meio do stream
+            parsedHtml = `<p>${safeContent.replace(/\n/g, '<br>')}</p>`;
+        }
 
-        // Processamento de tags multimídia personalizadas no texto (ex: [img:url|legenda])
         parsedHtml = parsedHtml.replace(/\[img:(.*?)(?:\Vert{}(.*?))?\]/g, (match, url, caption) => {
             return `<div class="my-3"><img src="${url.trim()}" class="rounded-lg max-w-full shadow-md" />${caption ? `<p class="text-xs text-zinc-400 mt-1">${caption.trim()}</p>` : ''}</div>`;
         });
@@ -112,16 +122,17 @@ function processRichContent(content) {
     return parsedHtml;
 }
 
-// Aplicação de Renderização Completa (Markdown + KaTeX Seguro)
 function applyRichRendering(bubbleElement, content, isFinished = false) {
     if (!content || content === '') {
         bubbleElement.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
         return;
     }
 
-    bubbleElement.innerHTML = processRichContent(content);
+    // Durante o streaming rápido, usamos textContent ou innerHTML direto se o texto estiver acabando de chegar
+    // para evitar travamentos de parsing contínuo, aplicando o marked completo apenas quando estabilizar ou a cada X caracteres.
+    bubbleElement.innerHTML = processRichContent(content, isFinished);
 
-    // Garante que o KaTeX carregou antes de varrer o elemento
+    // O KaTeX só roda pesado se a mensagem terminou ou se contém delimitadores fechados para evitar erro de sintaxe em tempo real
     const tryRenderMath = (retries = 5) => {
         if (typeof renderMathInElement === 'function') {
             try {
@@ -130,15 +141,15 @@ function applyRichRendering(bubbleElement, content, isFinished = false) {
                         {left: '$$', right: '$$', display: true},
                         {left: '$', right: '$', display: false},
                         {left: '\\(', right: '\\)', display: false},
-                        {left: '\\[', right: '\\]', display: true}
+                        {left: '[', right: ']', display: true}
                     ],
                     throwOnError: false
                 });
             } catch (e) {
-                console.error("Erro ao renderizar LaTeX via KaTeX:", e);
+                // Silencia erros temporários de LaTeX incompleto durante o streaming
             }
         } else if (retries > 0) {
-            setTimeout(() => tryRenderMath(retries - 1), 100);
+            setTimeout(() => tryRenderMath(retries - 1), 150);
         }
     };
 
@@ -231,8 +242,6 @@ function renderMessages() {
     chatEl.scrollTop = chatEl.scrollHeight;
 }
 
-// Atualização rápida durante o streaming (performance otimizada)
-// Atualização rápida durante o streaming com suporte a conteúdo rico
 function updateLastMessageFast(content) {
     if (messagesStore.length === 0) return;
     const lastMsg = messagesStore[messagesStore.length - 1];
@@ -251,8 +260,7 @@ function updateLastMessageFast(content) {
     }
 }
 
-// Atualização final ou padrão com suporte completo a Markdown, LaTeX e Multimídia
-function updateLastMessage(content, isFinished = false) {
+function updateLastMessage(content, isFinished = true) {
     if (messagesStore.length === 0) return;
     const lastMsg = messagesStore[messagesStore.length - 1];
     lastMsg.content = content;

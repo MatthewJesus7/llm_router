@@ -1,4 +1,4 @@
-// api.js (Transparente e Flexível: aceita texto, objetos estruturados, arrays ou multimídia sem filtragem severa)
+// api.js (Correção definitiva do parser SSE e renderização)
 const BASE_URL = "http://localhost:8000";
 let currentThreadId = crypto.randomUUID();
 let messagesStore = [];
@@ -75,34 +75,25 @@ async function sendUserMessage(text) {
         messagesStore.push(aiMsg);
         renderMessages();
 
-        let lastRenderTime = 0;
-        const RENDER_THROTTLE_MS = 16.6;
-
         while (true) {
             const { value, done } = await reader.read();
             
-            if (done) {
-                if (buffer.trim()) {
-                    processChunks(buffer, aiMsg);
-                }
-                break;
-            }
+            if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
-            const events = buffer.split('\n\n');
-            buffer = events.pop(); 
+            
+            // Separa os blocos SSE por linha dupla
+            const events = buffer.split(/\r?\n\r?\n/);
+            buffer = events.pop(); // Mantém o último pedaço incompleto no buffer
 
             for (const eventBlock of events) {
                 processChunks(eventBlock, aiMsg);
             }
+        }
 
-            const now = performance.now();
-            if (now - lastRenderTime > RENDER_THROTTLE_MS) {
-                lastRenderTime = now;
-                if (typeof updateLastMessageFast === 'function') {
-                    updateLastMessageFast(aiMsg.content);
-                }
-            }
+        // Processa qualquer sobra final no buffer
+        if (buffer.trim()) {
+            processChunks(buffer, aiMsg);
         }
 
         updateLastMessage(aiMsg.content, true);
@@ -119,20 +110,18 @@ async function sendUserMessage(text) {
     }
 }
 
-// Processador ultra permissivo de blocos SSE: aceita qualquer payload bruto (strings, objetos, multimídia)
 function processChunks(eventBlock, aiMsg) {
     if (!eventBlock.trim()) return;
 
     let eventType = 'message';
     let dataLines = [];
 
-    const lines = eventBlock.split('\n');
+    const lines = eventBlock.split(/\r?\n/);
     for (const line of lines) {
         if (line.startsWith('event:')) {
             eventType = line.substring(6).trim();
-        } else if (line.startsWith('data:') || line.startsWith('data: ')) {
-            const prefixLength = line.startsWith('data: ') ? 6 : 5;
-            dataLines.push(line.substring(prefixLength));
+        } else if (line.startsWith('data:')) {
+            dataLines.push(line.substring(5).trimStart());
         }
     }
 
@@ -144,36 +133,45 @@ function processChunks(eventBlock, aiMsg) {
 
         if (eventType === 'messages/partial') {
             if (Array.isArray(parsedData) && parsedData.length > 0) {
-                // Aceita string, objetos estruturados ou arrays multimídia inteiros
-                aiMsg.content = parsedData[0].content !== undefined ? parsedData[0].content : parsedData[0];
-            } else {
-                aiMsg.content = parsedData.content !== undefined ? parsedData.content : parsedData;
+                const item = parsedData[0];
+                if (typeof item === 'string') {
+                    aiMsg.content = item;
+                } else if (item && item.content !== undefined) {
+                    aiMsg.content = item.content;
+                }
+            } else if (parsedData && parsedData.content !== undefined) {
+                aiMsg.content = parsedData.content;
+            } else if (typeof parsedData === 'string') {
+                aiMsg.content = parsedData;
+            }
+            
+            // Força a atualização imediata da UI a cada chunk recebido
+            if (aiMsg.content) {
+                if (typeof updateLastMessageFast === 'function') {
+                    updateLastMessageFast(aiMsg.content);
+                } else {
+                    updateLastMessage(aiMsg.content, false);
+                }
             }
         } else if (eventType === 'values') {
             if (parsedData.messages) {
                 messagesStore = parsedData.messages;
-                if (messagesStore.length > 0) {
-                    const latest = messagesStore[messagesStore.length - 1];
-                    if (latest && latest.content !== undefined) {
-                        aiMsg.content = latest.content;
-                    }
+                const latest = messagesStore[messagesStore.length - 1];
+                if (latest && latest.content !== undefined) {
+                    aiMsg.content = latest.content;
                 }
                 renderMessages();
-            } else {
-                aiMsg.content = parsedData;
             }
         } else if (eventType === 'error') {
             showToast('Erro: ' + (parsedData.error || JSON.stringify(parsedData)));
-        } else {
-            // Eventos customizados ou desconhecidos: repassa o dado cru para o UI tratar
-            aiMsg.content = parsedData.content !== undefined ? parsedData.content : parsedData;
         }
     } catch (parseErr) {
-        // Se o payload não for JSON válido, assume que é texto cru em streaming e acumula
-        if (aiMsg.content && typeof aiMsg.content === 'string') {
-            aiMsg.content += dataPayload;
-        } else {
+        // Fallback caso venha texto puro sem JSON válido
+        if (dataPayload) {
             aiMsg.content = dataPayload;
+            if (typeof updateLastMessageFast === 'function') {
+                updateLastMessageFast(aiMsg.content);
+            }
         }
     }
 }

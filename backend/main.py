@@ -1,4 +1,3 @@
-# backend/main.py
 # ─────────────────────────────────────────────────────────────
 # Ponto de entrada da API FastAPI (Stateless & Privacy-First com Auditoria)
 # ─────────────────────────────────────────────────────────────
@@ -147,20 +146,15 @@ async def stream_run(thread_id: str, request: Request):
             logger.info(f"[{thread_id}] AUDIT AI OK | tempo_resposta={t_ai_duration:.3f}s | chars={len(response)}")
 
             ai_msg_id = str(uuid.uuid4())
-            accumulated = ""
-
             t_start_stream = time.perf_counter()
-            chunk_size = 6
-            for i in range(0, len(response), chunk_size):
-                chunk = response[i: i + chunk_size]
-                accumulated += chunk
-                yield _sse("messages/partial", [_ai_msg(ai_msg_id, accumulated)])
-                await asyncio.sleep(0.015)
+
+            # Envio direto da resposta completa sem fatiamento artificial aleatório
+            yield _sse("messages/partial", [_ai_msg(ai_msg_id, response)])
 
             t_stream_duration = time.perf_counter() - t_start_stream
             t_total_duration = time.perf_counter() - t_start_request
 
-            logger.info(f"[{thread_id}] AUDIT SUMMARY | tempo_stream={t_stream_duration:.3f}s | tempo_total={t_total_duration:.3f}s | tokens~={len(response)}")
+            logger.info(f"[{thread_id}] AUDIT SUMMARY (Direct) | tempo_stream={t_stream_duration:.3f}s | tempo_total={t_total_duration:.3f}s | chars={len(response)}")
 
             final_msgs = new_messages + [_ai_msg(ai_msg_id, response)]
             yield _sse("values", {"messages": final_msgs})
