@@ -1,4 +1,4 @@
-// ui.js (Corrigido: funções de atualização unificadas para exibir o stream em tempo real sem sumir com nada)
+// ui.js (Atualizado: suporte completo a Markdown, LaTeX via KaTeX e Multimídia/Componentes)
 let renderedCount = 0;
 const inputEl = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
@@ -8,6 +8,7 @@ if (window.marked && marked.setOptions) marked.setOptions({ breaks: true, gfm: t
 
 function showToast(msg, type = 'err') {
     const wrap = document.getElementById('toast');
+    if (!wrap) return;
     const el = document.createElement('div');
     el.className = 'toast' + (type === 'ok' ? ' ok' : '');
     const ic = document.createElement('i');
@@ -20,9 +21,11 @@ function showToast(msg, type = 'err') {
 }
 
 function setStreamingState(v) {
-    isStreaming = v;
-    sendBtn.disabled = v || inputEl.value.trim() === '';
-    sendBtn.innerHTML = v ? '<i class="fa-solid fa-spinner fa-spin text-xs"></i>' : '<i class="fa-solid fa-arrow-up text-xs"></i>';
+    if (typeof isStreaming !== 'undefined') isStreaming = v;
+    if (sendBtn && inputEl) {
+        sendBtn.disabled = v || inputEl.value.trim() === '';
+        sendBtn.innerHTML = v ? '<i class="fa-solid fa-spinner fa-spin text-xs"></i>' : '<i class="fa-solid fa-arrow-up text-xs"></i>';
+    }
 }
 
 function autoResize(textarea) {
@@ -70,9 +73,81 @@ function resetSession() {
     showToast('Nova conversa iniciada', 'ok');
 }
 
+// Processamento unificado de Conteúdo Rico (Markdown + LaTeX + Multimídia Customizada)
+function processRichContent(content) {
+    if (!content) return '';
+
+    let parsedHtml = '';
+    
+    // Tratamento caso o conteúdo venha em formato de objeto estruturado/multimídia
+    if (typeof content === 'object') {
+        if (content.type === 'image' || content.url) {
+            parsedHtml = `<div class="my-2"><img src="${content.url || content.src}" alt="${content.alt || 'Mídia'}" class="rounded-lg max-w-full shadow-md" />${content.caption ? `<p class="text-xs text-zinc-400 mt-1">${content.caption}</p>` : ''}</div>`;
+        } else {
+            parsedHtml = `<pre class="bg-zinc-900 p-3 rounded text-xs overflow-x-auto"><code>${JSON.stringify(content, null, 2)}</code></pre>`;
+        }
+    } else {
+        // Se a IA mandou um documento LaTeX completo, extrai e converte para Markdown/KaTeX compatível
+        if (content.includes('\\documentclass')) {
+            const docMatch = content.match(/\\begin\{document\}([\s\S]*?)\\end\{document\}/);
+            if (docMatch) {
+                content = docMatch[1]
+                    .replace(/\\textbf\{([^}]+)\}/g, '**$1**')
+                    .replace(/\\begin\{itemize\}/g, '')
+                    .replace(/\\end\{itemize\}/g, '')
+                    .replace(/\\item/g, '*')
+                    .replace(/\\begin\{align\*?\}/g, '$$\n\\begin{aligned}') .replace(/\\end\{align\*?\}/g, '\\end{aligned}\n$$');
+            }
+        }
+
+        // Parse padrão via Marked
+        parsedHtml = marked.parse(content);
+
+        // Processamento de tags multimídia personalizadas no texto (ex: [img:url|legenda])
+        parsedHtml = parsedHtml.replace(/\[img:(.*?)(?:\Vert{}(.*?))?\]/g, (match, url, caption) => {
+            return `<div class="my-3"><img src="${url.trim()}" class="rounded-lg max-w-full shadow-md" />${caption ? `<p class="text-xs text-zinc-400 mt-1">${caption.trim()}</p>` : ''}</div>`;
+        });
+    }
+
+    return parsedHtml;
+}
+
+// Aplicação de Renderização Completa (Markdown + KaTeX Seguro)
+function applyRichRendering(bubbleElement, content, isFinished = false) {
+    if (!content || content === '') {
+        bubbleElement.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+        return;
+    }
+
+    bubbleElement.innerHTML = processRichContent(content);
+
+    // Garante que o KaTeX carregou antes de varrer o elemento
+    const tryRenderMath = (retries = 5) => {
+        if (typeof renderMathInElement === 'function') {
+            try {
+                renderMathInElement(bubbleElement, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false},
+                        {left: '\\(', right: '\\)', display: false},
+                        {left: '\\[', right: '\\]', display: true}
+                    ],
+                    throwOnError: false
+                });
+            } catch (e) {
+                console.error("Erro ao renderizar LaTeX via KaTeX:", e);
+            }
+        } else if (retries > 0) {
+            setTimeout(() => tryRenderMath(retries - 1), 100);
+        }
+    };
+
+    tryRenderMath();
+}
+
 function createMessageElement(msg) {
     const isUser = msg.type === 'human';
-    const textContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+    const textContent = typeof msg.content === 'string' ? msg.content : (typeof msg.content === 'object' ? msg.content : JSON.stringify(msg.content));
 
     const row = document.createElement('div');
     row.className = `msg-row flex items-start gap-2.5 max-w-3xl mx-auto w-full ${isUser ? 'justify-end' : 'justify-start'} msg`;
@@ -90,11 +165,9 @@ function createMessageElement(msg) {
     bubble.id = `bubble-${msg.id}`;
 
     if (isUser) {
-        bubble.textContent = textContent;
-    } else if (!textContent || textContent === '') {
-        bubble.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+        bubble.textContent = typeof textContent === 'string' ? textContent : JSON.stringify(textContent);
     } else {
-        bubble.innerHTML = marked.parse(textContent);
+        applyRichRendering(bubble, textContent, true);
     }
 
     contentDiv.appendChild(bubble);
@@ -118,6 +191,8 @@ function createMessageElement(msg) {
 }
 
 function renderMessages() {
+    if (typeof messagesStore === 'undefined') return;
+
     if (messagesStore.length === 0) {
         renderedCount = 0;
         chatEl.innerHTML = `
@@ -156,7 +231,8 @@ function renderMessages() {
     chatEl.scrollTop = chatEl.scrollHeight;
 }
 
-// Atualização rápida durante o streaming (usa textContent para garantir alta performance em CPU velha)
+// Atualização rápida durante o streaming (performance otimizada)
+// Atualização rápida durante o streaming com suporte a conteúdo rico
 function updateLastMessageFast(content) {
     if (messagesStore.length === 0) return;
     const lastMsg = messagesStore[messagesStore.length - 1];
@@ -164,9 +240,8 @@ function updateLastMessageFast(content) {
 
     const bubble = document.getElementById(`bubble-${lastMsg.id}`);
     if (bubble) {
-        bubble.textContent = content;
+        applyRichRendering(bubble, content, false);
     } else {
-        // Se o elemento sumiu ou foi recriado, força re-renderização completa
         renderMessages();
     }
 
@@ -176,7 +251,7 @@ function updateLastMessageFast(content) {
     }
 }
 
-// Atualização final ou padrão com suporte completo a Marked.parse
+// Atualização final ou padrão com suporte completo a Markdown, LaTeX e Multimídia
 function updateLastMessage(content, isFinished = false) {
     if (messagesStore.length === 0) return;
     const lastMsg = messagesStore[messagesStore.length - 1];
@@ -186,10 +261,8 @@ function updateLastMessage(content, isFinished = false) {
     if (bubble) {
         if (!content || content === '') {
             bubble.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
-        } else if (isFinished) {
-            bubble.innerHTML = marked.parse(content);
         } else {
-            bubble.textContent = content;
+            applyRichRendering(bubble, content, isFinished);
         }
     } else {
         renderMessages();
@@ -207,15 +280,23 @@ function handleSendMessage(event) {
     if (!text) return;
     inputEl.value = '';
     inputEl.style.height = 'auto';
-    sendUserMessage(text);
+    if (typeof sendUserMessage === 'function') {
+        sendUserMessage(text);
+    }
 }
 
-inputEl.addEventListener('input', () => {
-    if (!isStreaming) sendBtn.disabled = inputEl.value.trim() === '';
-});
+if (inputEl) {
+    inputEl.addEventListener('input', () => {
+        const isStreamingActive = typeof isStreaming !== 'undefined' ? isStreaming : false;
+        if (!isStreamingActive) sendBtn.disabled = inputEl.value.trim() === '';
+    });
+}
 
 window.onload = () => {
     renderMessages();
-    checkConnection();
-    document.getElementById('chat-form').addEventListener('submit', handleSendMessage);
+    if (typeof checkConnection === 'function') checkConnection();
+    const chatForm = document.getElementById('chat-form');
+    if (chatForm) {
+        chatForm.addEventListener('submit', handleSendMessage);
+    }
 };

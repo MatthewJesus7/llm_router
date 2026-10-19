@@ -1,4 +1,4 @@
-// api.js (Transparente: entrega tudo cru e completo para o ui.js gerenciar)
+// api.js (Transparente e Flexível: aceita texto, objetos estruturados, arrays ou multimídia sem filtragem severa)
 const BASE_URL = "http://localhost:8000";
 let currentThreadId = crypto.randomUUID();
 let messagesStore = [];
@@ -9,31 +9,33 @@ async function checkConnection() {
     const textEl = document.getElementById('connection-text');
     const selectEl = document.getElementById('provider-select');
 
-    dotEl.className = 'status-dot wait';
-    textEl.textContent = 'Conectando...';
+    if (dotEl) dotEl.className = 'status-dot wait';
+    if (textEl) textEl.textContent = 'Conectando...';
 
     try {
         const infoRes = await fetch(`${BASE_URL}/info`);
         if (!infoRes.ok) throw new Error('Falha ao conectar');
         const infoData = await infoRes.json();
 
-        dotEl.className = 'status-dot ok';
-        textEl.textContent = 'Conectado';
+        if (dotEl) dotEl.className = 'status-dot ok';
+        if (textEl) textEl.textContent = 'Conectado';
 
-        selectEl.innerHTML = '';
-        if (infoData.providers && infoData.providers.length > 0) {
-            infoData.providers.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p;
-                opt.textContent = p;
-                selectEl.appendChild(opt);
-            });
-        } else {
-            selectEl.innerHTML = '<option value="">Padrão do sistema</option>';
+        if (selectEl) {
+            selectEl.innerHTML = '';
+            if (infoData.providers && infoData.providers.length > 0) {
+                infoData.providers.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p;
+                    opt.textContent = p;
+                    selectEl.appendChild(opt);
+                });
+            } else {
+                selectEl.innerHTML = '<option value="">Padrão do sistema</option>';
+            }
         }
     } catch (err) {
-        dotEl.className = 'status-dot err';
-        textEl.textContent = 'Desconectado';
+        if (dotEl) dotEl.className = 'status-dot err';
+        if (textEl) textEl.textContent = 'Desconectado';
         showToast('Não foi possível conectar ao servidor (' + BASE_URL + ')');
         console.error(err);
     }
@@ -47,7 +49,8 @@ async function sendUserMessage(text) {
     messagesStore.push({ id: crypto.randomUUID(), type: 'human', content: text });
     renderMessages();
 
-    const provider = document.getElementById('provider-select').value;
+    const providerEl = document.getElementById('provider-select');
+    const provider = providerEl ? providerEl.value : '';
 
     try {
         const response = await fetch(`${BASE_URL}/threads/${currentThreadId}/runs/stream`, {
@@ -79,7 +82,6 @@ async function sendUserMessage(text) {
             const { value, done } = await reader.read();
             
             if (done) {
-                // Se sobrou algo no buffer no fechamento da conexão, processa à força
                 if (buffer.trim()) {
                     processChunks(buffer, aiMsg);
                 }
@@ -88,13 +90,12 @@ async function sendUserMessage(text) {
 
             buffer += decoder.decode(value, { stream: true });
             const events = buffer.split('\n\n');
-            buffer = events.pop(); // Guarda o fragmento pendente
+            buffer = events.pop(); 
 
             for (const eventBlock of events) {
                 processChunks(eventBlock, aiMsg);
             }
 
-            // Throttle de UI leve para manter o FPS da CPU velha em pé
             const now = performance.now();
             if (now - lastRenderTime > RENDER_THROTTLE_MS) {
                 lastRenderTime = now;
@@ -104,7 +105,6 @@ async function sendUserMessage(text) {
             }
         }
 
-        // Entrega final garantida e sem cortes ao ui.js
         updateLastMessage(aiMsg.content, true);
 
     } catch (err) {
@@ -119,7 +119,7 @@ async function sendUserMessage(text) {
     }
 }
 
-// Processador bruto de blocos SSE (Joga toda a responsabilidade de exibição para o ui.js)
+// Processador ultra permissivo de blocos SSE: aceita qualquer payload bruto (strings, objetos, multimídia)
 function processChunks(eventBlock, aiMsg) {
     if (!eventBlock.trim()) return;
 
@@ -144,25 +144,36 @@ function processChunks(eventBlock, aiMsg) {
 
         if (eventType === 'messages/partial') {
             if (Array.isArray(parsedData) && parsedData.length > 0) {
-                // Atribuição direta e sem filtros de tamanho
-                aiMsg.content = parsedData[0].content || '';
+                // Aceita string, objetos estruturados ou arrays multimídia inteiros
+                aiMsg.content = parsedData[0].content !== undefined ? parsedData[0].content : parsedData[0];
+            } else {
+                aiMsg.content = parsedData.content !== undefined ? parsedData.content : parsedData;
             }
         } else if (eventType === 'values') {
             if (parsedData.messages) {
                 messagesStore = parsedData.messages;
                 if (messagesStore.length > 0) {
                     const latest = messagesStore[messagesStore.length - 1];
-                    if (latest && latest.content) {
+                    if (latest && latest.content !== undefined) {
                         aiMsg.content = latest.content;
                     }
                 }
                 renderMessages();
+            } else {
+                aiMsg.content = parsedData;
             }
         } else if (eventType === 'error') {
             showToast('Erro: ' + (parsedData.error || JSON.stringify(parsedData)));
+        } else {
+            // Eventos customizados ou desconhecidos: repassa o dado cru para o UI tratar
+            aiMsg.content = parsedData.content !== undefined ? parsedData.content : parsedData;
         }
     } catch (parseErr) {
-        // Se der erro no JSON, joga no console mas não interrompe o fluxo bruto
-        console.warn('Payload parcial ignorado ou bruto:', dataPayload);
+        // Se o payload não for JSON válido, assume que é texto cru em streaming e acumula
+        if (aiMsg.content && typeof aiMsg.content === 'string') {
+            aiMsg.content += dataPayload;
+        } else {
+            aiMsg.content = dataPayload;
+        }
     }
 }

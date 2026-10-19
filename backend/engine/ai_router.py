@@ -42,8 +42,7 @@ PROVIDERS_CONFIG = [
         "endpoint": "https://openrouter.ai/api/v1/chat/completions",
         "multimodels": True,
         "models": [
-            "google/gemma-2-9b-it",
-            "mistralai/mistral-7b-instruct",
+            "google/gemma-4-26b-a4b-it",
             "deepseek/deepseek-chat"
         ],
         "max_tokens_env": "OPENROUTER_MAX_TOKENS",
