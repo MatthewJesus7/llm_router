@@ -1,0 +1,204 @@
+/* ============================================================
+   1. INDICADOR DE STATUS
+   ============================================================ */
+   .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 99px;
+    flex-shrink: 0;
+    background: #71717a;
+}
+.status-dot.wait { background: #fbbf24; }
+.status-dot.ok   { background: #34d399; }
+.status-dot.err  { background: #f87171; }
+
+/* ============================================================
+   2. PILL / PROVIDER SELECT
+   ============================================================ */
+.pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+}
+.pill i.microchip { font-size: 11px; color: #a5b4fc; }
+.pill i.chevron   { font-size: 9px;  color: #71717a; }
+
+#provider-select {
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 12px;
+    font-weight: 500;
+    color: #e4e4e7;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+}
+#provider-select option {
+    background: var(--surface);
+    color: #e4e4e7;
+}
+
+.pill-wrapper { display: none; }
+@media (min-width: 640px) {
+    .pill-wrapper { display: flex; }
+}
+
+/* ============================================================
+   3. ICON BUTTON
+   ============================================================ */
+.icon-btn {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: #a1a1aa;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+.icon-btn:hover {
+    color: #fff;
+    border-color: var(--accent);
+    background: var(--border);
+}
+.icon-btn i {
+    font-size: 0.75rem;
+    transition: transform .5s;
+}
+.icon-btn:hover i { transform: rotate(180deg); }
+
+/* ============================================================
+   4. CHIP (botão de sugestão)
+   ============================================================ */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 99px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: #a1a1aa;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.chip:hover {
+    color: #fff;
+    border-color: var(--accent);
+    background: var(--border);
+}
+.chip i { font-size: 11px; color: #a5b4fc; }
+
+/* ============================================================
+   5. COMPOSER (form de envio)
+   ============================================================ */
+.composer {
+    position: relative;
+    display: flex;
+    align-items: center;
+    max-width: 48rem;
+    margin: 0 auto;
+    background: #121217;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+}
+.composer:focus-within {
+    border-color: rgba(129,140,248,.5);
+}
+
+#user-input {
+    flex: 1;
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    color: #f4f4f5;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+    max-height: 150px;
+    padding: 12px 48px 12px 14px;
+}
+#user-input::placeholder { color: #52525b; }
+
+.send-btn {
+    position: absolute;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    width: 2.25rem; height: 2.25rem;
+    border-radius: 10px;
+    background: var(--grad);
+    border: none;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+.send-btn:disabled {
+    background: var(--border);
+    color: #52525b;
+    cursor: default;
+}
+.send-btn:not(:disabled):hover { transform: translateY(-1px); }
+.send-btn i { font-size: 0.75rem; }
+
+.help-text {
+    position: relative;
+    text-align: center;
+    margin: 0.625rem 0 0;
+    font-size: 11px;
+    color: #52525b;
+}
+
+/* ============================================================
+   6. COPY BUTTON (base)
+   ============================================================ */
+.copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #71717a;
+    background: none;
+    border: none;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* ============================================================
+   7. TOAST
+   ============================================================ */
+#toast {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #181020;
+    border: 1px solid #7f1d1d;
+    color: #fca5a5;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+}
+.toast.ok {
+    border-color: #065f46;
+    color: #6ee7b7;
+}

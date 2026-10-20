@@ -1,4 +1,4 @@
-// ui.js (Atualizado: Tratamento anti-corte para streaming e renderização estável)
+// ui.js (Atualizado: Substituição global iterativa para o bloco LaTeX)
 let renderedCount = 0;
 const inputEl = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
@@ -88,22 +88,16 @@ function processRichContent(content, isFinished = false) {
     } else {
         let safeContent = content;
 
-        // Durante o streaming, se a string terminar com um bloco LaTeX ou markdown aberto cortado, evitamos quebrar
-        if (!isFinished) {
-            // Garante que se abrir um bloco de código ou LaTeX e não fechar, o parser não engula tudo
-            // Substituições básicas para evitar quebras visuais drásticas no meio do chunk
-        }
-
+        // Iterar sobre todas as ocorrências de documentos LaTeX (\documentclass) no texto
         if (safeContent.includes('\\documentclass')) {
-            const docMatch = safeContent.match(/\\begin\{document\}([\s\S]*?)\\end\{document\}/);
-            if (docMatch) {
-                safeContent = docMatch[1]
+            safeContent = safeContent.replace(/\\documentclass[\s\S]*?\\begin\{document\}([\s\S]*?)\\end\{document\}/g, (match, docBody) => {
+                return docBody
                     .replace(/\\textbf\{([^}]+)\}/g, '**$1**')
                     .replace(/\\begin\{itemize\}/g, '')
                     .replace(/\\end\{itemize\}/g, '')
                     .replace(/\\item/g, '*')
                     .replace(/\\begin\{align\*?\}/g, '$$\n\\begin{aligned}') .replace(/\\end\{align\*?\}/g, '\\end{aligned}\n$$');
-            }
+            });
         }
 
         // Tenta parsear via Marked com segurança contra tags cortadas no fim do chunk
@@ -128,11 +122,8 @@ function applyRichRendering(bubbleElement, content, isFinished = false) {
         return;
     }
 
-    // Durante o streaming rápido, usamos textContent ou innerHTML direto se o texto estiver acabando de chegar
-    // para evitar travamentos de parsing contínuo, aplicando o marked completo apenas quando estabilizar ou a cada X caracteres.
     bubbleElement.innerHTML = processRichContent(content, isFinished);
 
-    // O KaTeX só roda pesado se a mensagem terminou ou se contém delimitadores fechados para evitar erro de sintaxe em tempo real
     const tryRenderMath = (retries = 5) => {
         if (typeof renderMathInElement === 'function') {
             try {

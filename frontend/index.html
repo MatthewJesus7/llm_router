@@ -1,95 +1,101 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="h-full">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0a0a10">
     <title>Assistente IA</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- KaTeX para renderização de LaTeX -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+    <!-- Estilos (ordem importa) -->
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/content.css">
+<body>
 
-    <link rel="stylesheet" href="style.css">
-</head>
-<body class="h-full text-zinc-100 flex flex-col antialiased overflow-hidden">
+    <div class="aurora"></div>
+    <div id="toast"></div>
 
-<div class="aurora"></div>
-<div id="toast"></div>
-
-<!-- HEADER -->
-<header class="header relative z-10 shrink-0 px-4 sm:px-6 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-violet-600 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-600/30">
-            <i class="fa-solid fa-wand-magic-sparkles text-white text-sm"></i>
-        </div>
-        <div>
-            <h1 class="font-semibold text-[15px] tracking-tight text-white leading-none">Assistente IA</h1>
-            <div class="flex items-center gap-2 mt-1.5">
-                <span id="connection-dot" class="status-dot wait"></span>
-                <span id="connection-text" class="text-[11px] text-zinc-500 font-medium">Conectando...</span>
+    <!-- HEADER -->
+    <header class="header">
+        <div class="header-brand">
+            <div class="brand-logo">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
             </div>
-        </div>
-    </div>
-
-    <div class="flex items-center gap-2.5">
-        <div class="hidden sm:flex pill">
-            <i class="fa-solid fa-microchip text-[11px] text-indigo-300"></i>
-            <select id="provider-select">
-                <option value="">Carregando...</option>
-            </select>
-            <i class="fa-solid fa-chevron-down text-[9px] text-zinc-500"></i>
-        </div>
-        <button onclick="resetSession()" title="Nova conversa" class="group icon-btn">
-            <i class="fa-solid fa-rotate-right text-xs transition-transform duration-500 group-hover:rotate-[180deg]"></i>
-        </button>
-    </div>
-</header>
-
-<!-- ÁREA PRINCIPAL -->
-<main class="relative z-10 flex-1 flex flex-col overflow-hidden">
-
-    <!-- FEED DE MENSAGENS -->
-    <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-6 space-y-5 custom-scrollbar">
-        <div class="flex flex-col items-center justify-center h-full text-center px-4 fade-in">
-            <div class="relative mb-5">
-                <div class="absolute -inset-3 rounded-[28px] bg-gradient-to-tr from-indigo-600/40 to-fuchsia-600/40 blur-2xl"></div>
-                <div class="relative w-16 h-16 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center">
-                    <i class="fa-solid fa-wand-magic-sparkles text-xl bg-gradient-to-tr from-indigo-300 to-fuchsia-300 bg-clip-text text-transparent"></i>
+            <div>
+                <h1 class="brand-title">Assistente IA</h1>
+                <div class="brand-status">
+                    <span id="connection-dot" class="status-dot wait"></span>
+                    <span id="connection-text">Conectando...</span>
                 </div>
             </div>
-            <h2 class="text-xl font-bold tracking-tight text-white">Como posso ajudar?</h2>
-            <p class="text-sm text-zinc-500 mt-2 max-w-sm leading-relaxed">Envie uma mensagem para conversar com o modelo configurado no seu backend.</p>
-            <div class="flex flex-wrap justify-center gap-2.5 mt-7 max-w-md">
-                <button class="chip" data-p="Explique de forma simples como funciona uma rede neural." onclick="usePrompt(this.dataset.p)"><i class="fa-solid fa-brain"></i>Explicar um conceito</button>
-                <button class="chip" data-p="Me ajude a escrever um e-mail profissional e objetivo." onclick="usePrompt(this.dataset.p)"><i class="fa-solid fa-paper-plane"></i>Escrever um e-mail</button>
-                <button class="chip" data-p="Faça um brainstorm com 10 ideias criativas para um projeto pessoal." onclick="usePrompt(this.dataset.p)"><i class="fa-solid fa-lightbulb"></i>Brainstorm de ideias</button>
+        </div>
+
+        <div class="header-actions">
+            <div class="pill-wrapper pill">
+                <i class="fa-solid fa-microchip microchip"></i>
+                <select id="provider-select">
+                    <option value="">Carregando...</option>
+                </select>
+                <i class="fa-solid fa-chevron-down chevron"></i>
+            </div>
+            <button onclick="resetSession()" title="Nova conversa" class="icon-btn">
+                <i class="fa-solid fa-rotate-right"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- ÁREA PRINCIPAL -->
+    <main>
+
+        <!-- FEED DE MENSAGENS -->
+        <div id="chat-messages" class="custom-scrollbar">
+            <div class="empty-state fade-in">
+                <div class="empty-icon-wrap">
+                    <div class="empty-icon-glow"></div>
+                    <div class="empty-icon">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
+                </div>
+                <h2 class="empty-title">Como posso ajudar?</h2>
+                <p class="empty-subtitle">
+                    Envie uma mensagem para conversar com o modelo configurado no seu backend.
+                </p>
+                <div class="chips">
+                    <button class="chip" data-p="Explique de forma simples como funciona uma rede neural." onclick="usePrompt(this.dataset.p)">
+                        <i class="fa-solid fa-brain"></i>Explicar um conceito
+                    </button>
+                    <button class="chip" data-p="Me ajude a escrever um e-mail profissional e objetivo." onclick="usePrompt(this.dataset.p)">
+                        <i class="fa-solid fa-paper-plane"></i>Escrever um e-mail
+                    </button>
+                    <button class="chip" data-p="Faça um brainstorm com 10 ideias criativas para um projeto pessoal." onclick="usePrompt(this.dataset.p)">
+                        <i class="fa-solid fa-lightbulb"></i>Brainstorm de ideias
+                    </button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- INPUT FIXO NA BASE -->
-    <div class="shrink-0 px-4 pb-4 pt-1 relative">
-        <div class="fade-bottom"></div>
-        <!-- Removido o onsubmit inline incorreto; o ui.js agora gerencia via addEventListener -->
-        <form id="chat-form" class="composer relative flex items-center max-w-3xl mx-auto">
-            <textarea id="user-input" rows="1" placeholder="Envie uma mensagem..." class="custom-scrollbar"
-                onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.getElementById('chat-form').requestSubmit(); }"
-                oninput="autoResize(this)"></textarea>
-            <button type="submit" id="send-btn" disabled class="send-btn absolute right-2 bottom-2 w-9 h-9 rounded-xl flex items-center justify-center text-white">
-                <i class="fa-solid fa-arrow-up text-xs"></i>
-            </button>
-        </form>
-        <p class="text-center mt-2.5 text-[11px] text-zinc-600 relative"><kbd>Enter</kbd> enviar &nbsp;·&nbsp; <kbd>Shift</kbd> + <kbd>Enter</kbd> nova linha</p>
-    </div>
-</main>
+        <!-- INPUT FIXO NA BASE -->
+        <div class="input-area">
+            <div class="fade-bottom"></div>
+            <form id="chat-form" class="composer">
+                <textarea id="user-input" rows="1" placeholder="Envie uma mensagem..." class="custom-scrollbar"
+                    onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.getElementById('chat-form').requestSubmit(); }"
+                    oninput="autoResize(this)"></textarea>
+                <button type="submit" id="send-btn" disabled class="send-btn">
+                    <i class="fa-solid fa-arrow-up"></i>
+                </button>
+            </form>
+            <p class="help-text"><kbd>Enter</kbd> enviar &nbsp;·&nbsp; <kbd>Shift</kbd> + <kbd>Enter</kbd> nova linha</p>
+        </div>
+    </main>
 
-<!-- SCRIPTS SEPARADOS -->
-<script src="js/api.js"></script>
-<script src="js/ui.js"></script>
-
+    <!-- SCRIPTS SEPARADOS -->
+    <script src="js/api.js"></script>
+    <script src="js/ui.js"></script>
 </body>
-</html> 
+</html>
