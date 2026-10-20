@@ -1,26 +1,15 @@
-/* ==========================================================================
-   BLOCO 1: ANIMAÇÕES E TRANSIÇÕES PESADAS (Apague para testar)
-   Exige cálculo de keyframes e interpoladores de layout a cada frame.
-   ========================================================================== */
-   .msg { animation: pop .35s cubic-bezier(.21,1.02,.73,1) both; }
+/*greater pc general*/
+.msg { animation: pop .35s cubic-bezier(.21,1.02,.73,1) both; }
    @keyframes pop { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
    .icon-btn, .chip, .composer { transition: all .2s ease; }
    
    
-   /* ==========================================================================
-      BLOCO 2: SOMBRAS COMPLEXAS / BOX-SHADOW (Apague para testar)
-      Força o motor gráfico a rasterizar desfoques vetoriais nas bordas.
-      ========================================================================== */
    .avatar-user { box-shadow: 0 4px 12px rgba(124,58,237,.4); }
    .bubble-user { box-shadow: 0 6px 16px rgba(124,58,237,.3); }
    .composer:focus-within { box-shadow: 0 0 0 3px rgba(99,102,241,.2); }
    .toast { box-shadow: 0 8px 24px rgba(0,0,0,.8); }
    
    
-   /* ==========================================================================
-      BLOCO 3: FUNDO AURORA E BLUR DE BACKDROP (Apague para testar)
-      O maior assassino de performance em CPUs antigas (blur por hardware).
-      ========================================================================== */
    .aurora{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0}
    .aurora::before,.aurora::after{content:'';position:absolute;width:50vw;height:50vw;border-radius:9999px;filter:blur(100px);opacity:.1}
    .aurora::before{background:#4f46e5;top:-20vw;left:-10vw}
@@ -30,3 +19,364 @@
        backdrop-filter: blur(10px);
        -webkit-backdrop-filter: blur(10px);
    }
+
+
+/*content.css*/
+
+
+/* ============================================================
+   GREATER_CSS.CSS
+   Efeitos "premium" com custo computacional elevado.
+   Requer GPU moderna (ou CPU pós-2013 com pelo menos 2 núcleos
+   rápidos) para manter 60fps. Carregue DEPOIS do CSS base
+   para sobrescrever/realçar.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1. GLASSMORPHISM — backdrop-filter
+   O navegador precisa amostrar + desfocar o background a
+   cada frame de scroll/animação. Custa como um segundo
+   compositing layer inteiro por elemento.
+   ------------------------------------------------------------ */
+   .avatar-ai,
+   .bubble-ai,
+   .empty-icon,
+   .chip {
+       backdrop-filter: blur(12px);
+       -webkit-backdrop-filter: blur(12px);
+   }
+   
+   /* Variação mais leve para elementos pequenos */
+   .avatar-ai { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+   .chip       { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+   
+   
+   /* ------------------------------------------------------------
+      2. GLOW ANIMADO — filter: blur + keyframes de escala
+      Pior ofensor do arquivo: blur de 48px re-renderizado a
+      cada frame porque o elemento TAMBÉM está sendo escalado.
+      Em 2013 isso cai para 5–15 fps facilmente.
+      ------------------------------------------------------------ */
+   @keyframes pulseGlow {
+       0%, 100% { transform: scale(1);    opacity: 0.4; }
+       50%      { transform: scale(1.05); opacity: 0.7; }
+   }
+   
+   .empty-icon-glow {
+       filter: blur(48px);
+       animation: pulseGlow 6s infinite ease-in-out;
+   }
+   
+   
+   /* ------------------------------------------------------------
+      3. GRADIENTE COM MÁSCARA DE TEXTO
+      background-clip: text cria uma máscara que precisa ser
+      recomposta junto com o blur do pai (.empty-icon).
+      ------------------------------------------------------------ */
+   .empty-icon i {
+       background: linear-gradient(to top right, #a5b4fc, #f0abfc);
+       -webkit-background-clip: text;
+       background-clip: text;
+       color: transparent;
+   }
+   
+   
+   /* ------------------------------------------------------------
+      4. SOMBRAS COLORIDAS / MULTI-CAMADA COM BLUR ALTO
+      Blur alto + spread obrigam rasterização de buffers grandes
+      em cada paint. Em single-thread vira stutter em scroll.
+      ------------------------------------------------------------ */
+   .bubble-user {
+       box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+   }
+   
+   .bubble-ai {
+       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+   }
+   
+   .empty-icon {
+       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+   }
+   
+   .avatar {
+       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+   }
+   
+   
+   /* ------------------------------------------------------------
+      5. HOVER CINÉTICO NOS CHIPS
+      transform + box-shadow dinâmico forçam novos paints
+      durante a animação de hover.
+      ------------------------------------------------------------ */
+   .chip {
+       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+   }
+   
+   .chip:hover {
+       transform: translateY(-2px);
+       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+   }
+   
+   
+   /* ------------------------------------------------------------
+      6. SOMBRA PROFUNDA EM IMAGENS MARKDOWN
+      Multi-camada, spread negativo, blur grande — só compensa
+      com GPU dedicada para camadas de composição.
+      ------------------------------------------------------------ */
+   .md-img {
+       box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4),
+                   0 4px 8px  -2px rgba(0, 0, 0, 0.3);
+   }
+   
+   
+   /* ------------------------------------------------------------
+      7. HINT DE COMPOSIÇÃO
+      Sem isso os efeitos acima ainda funcionam, mas o browser
+      vai "decidir" quando promover a layer. Forçar aqui evita
+      thrashing de paint durante animações.
+      ------------------------------------------------------------ */
+   .empty-icon-glow,
+   .msg-row {
+       will-change: transform, opacity;
+   }
+   
+   /* Cuidado: NÃO coloque will-change em .bubble-ai (muitas
+      instâncias = muitas layers = mais RAM + mais compositing). */
+
+
+
+/*layout*/
+
+
+
+/* ============================================================
+   GREATER_CSS.CSS
+   Efeitos "premium" com custo computacional elevado.
+   Requer GPU moderna (ou CPU pós-2013 com pelo menos 2 núcleos
+   rápidos) para manter 60fps. Carregue DEPOIS do CSS base
+   para sobrescrever/realçar.
+   ============================================================ */
+
+
+/* ============================================================
+   SEÇÃO A — FUNDO DECORATIVO (AURORA)
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   A1. AURORA COM BLUR PESADO
+   filter: blur(60px) em elemento fixed/inset:0 cobre o
+   viewport inteiro. O navegador rasteriza um buffer gigante
+   a cada repaint (scroll, resize, qualquer mudança de layer).
+   Em single-thread 2013 isso derruba para <20fps facilmente.
+   ------------------------------------------------------------ */
+   .aurora {
+      background:
+          radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.12), transparent 50%),
+          radial-gradient(circle at 85% 5%,  rgba(217, 70, 239, 0.09), transparent 50%),
+          radial-gradient(circle at 50% 95%, rgba(79, 70, 229, 0.08),  transparent 55%);
+      filter: blur(60px);
+      opacity: 0.85;
+      transform: translateZ(0);
+  }
+  
+  
+  /* ============================================================
+     SEÇÃO B — HEADER (GLASSMORPHISM)
+     ============================================================ */
+  
+  /* ------------------------------------------------------------
+     B1. BACKDROP-FILTER DO HEADER
+     Pior ofensor depois da aurora: blur(16px) + box-shadow
+     alta (24px) recompõe o glass a cada frame de scroll do
+     chat que está por baixo — re-amostragem constante.
+     ------------------------------------------------------------ */
+  .header {
+      background: rgba(9, 9, 11, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.2);
+  }
+  
+  
+  /* ============================================================
+     SEÇÃO C — LOGO / BRAND
+     ============================================================ */
+  
+  /* ------------------------------------------------------------
+     C1. SOMBRA DUPLA DO LOGO (externa + inset)
+     Blur 20px + spread negativo + inset highlight: rasteriza
+     buffer grande no paint. Em .header sticky é re-pintado a
+     cada frame de scroll.
+     ------------------------------------------------------------ */
+  .brand-logo {
+      box-shadow: 0 8px 20px -4px rgba(79, 70, 229, 0.4),
+                  inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  }
+  
+  /* ------------------------------------------------------------
+     C2. DROP-SHADOW NO ÍCONE
+     filter: drop-shadow() em SVG/ícone exige nova rasterização
+     da silhueta — não é barato em hardware antigo.
+     ------------------------------------------------------------ */
+  .brand-logo i {
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+  }
+  
+  
+  /* ============================================================
+     SEÇÃO D — INDICADOR DE CONEXÃO
+     ============================================================ */
+  
+  /* ------------------------------------------------------------
+     D1. GLOW DO PONTO DE STATUS
+     box-shadow de 8px de blur em elemento 6x6px: o custo não é
+     o ponto, é o buffer de blur que ele força a rasterizar.
+     ------------------------------------------------------------ */
+  #connection-text::before {
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+  }
+  
+  
+  /* ============================================================
+     SEÇÃO E — FEED DE CHAT (mensagens)
+     (originalmente do CSS de chat)
+     ============================================================ */
+  
+  /* ------------------------------------------------------------
+     E1. GLASSMORPHISM EM AVATAR / BALÃO / CHIP
+     Cada .bubble-ai visível = uma layer de backdrop-filter
+     ativa. Em uma conversa longa há dezenas delas.
+     ------------------------------------------------------------ */
+  .avatar-ai,
+  .bubble-ai {
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+  }
+  
+  .avatar-ai { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  
+  .chip {
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+  }
+  
+  /* ------------------------------------------------------------
+     E2. SOMBRAS DOS BALÕES / AVATAR
+     Blur alto + spread obrigam rasterização de buffers grandes
+     em cada paint. Em scroll contínuo = stutter.
+     ------------------------------------------------------------ */
+  .avatar {
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .bubble-user {
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+  }
+  
+  .bubble-ai {
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  }
+  
+  
+  /* ============================================================
+     SEÇÃO F — ESTADO VAZIO (WELCOME WIDGET)
+     ============================================================ */
+  
+  /* ------------------------------------------------------------
+     F1. GLOW ANIMADO — blur 48px + keyframes de escala
+     Pior ofensor do arquivo de chat: blur recalculado a cada
+     frame porque o elemento TAMBÉM está sendo escalado.
+     ------------------------------------------------------------ */
+  @keyframes pulseGlow {
+      0%, 100% { transform: scale(1);    opacity: 0.4; }
+      50%      { transform: scale(1.05); opacity: 0.7; }
+  }
+  
+  .empty-icon-glow {
+      position: absolute;
+      inset: -1rem;
+      border-radius: 32px;
+      background: linear-gradient(to top right, rgba(79,70,229,.35), rgba(217,70,239,.35));
+      filter: blur(48px);
+      animation: pulseGlow 6s infinite ease-in-out;
+      will-change: transform, opacity;
+  }
+  
+  /* ------------------------------------------------------------
+     F2. VIDRO DO ÍCONE CENTRAL
+     ------------------------------------------------------------ */
+  .empty-icon {
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+  }
+  
+  /* ------------------------------------------------------------
+     F3. GRADIENTE MASCARADO NO TEXTO DO ÍCONE
+     background-clip: text cria máscara que precisa ser
+     recomposta junto com o blur do pai.
+     ------------------------------------------------------------ */
+  .empty-icon i {
+      background: linear-gradient(to top right, #a5b4fc, #f0abfc);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+  }
+  
+  
+  /* ============================================================
+     SEÇÃO G — CHIPS (hover cinético)
+     ============================================================ */
+  
+  /* ------------------------------------------------------------
+     G1. TRANSFORM + BOX-SHADOW NO HOVER
+     Durante a animação, transform + box-shadow forçam novos
+     paints em sequência.
+     ------------------------------------------------------------ */
+  .chip {
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  
+  .chip:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  
+  
+  /* ============================================================
+     SEÇÃO H — MARKDOWN
+     ============================================================ */
+  
+  /* ------------------------------------------------------------
+     H1. INSET SHADOW EM BLOCOS DE CÓDIGO
+     box-shadow inset em <pre> com overflow-x: auto é
+     re-pintado em cada scroll horizontal.
+     ------------------------------------------------------------ */
+  .markdown-body pre {
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* ------------------------------------------------------------
+     H2. SOMBRA DUPLA NAS IMAGENS
+     Multi-camada, spread negativo, blur grande — só compensa
+     com GPU dedicada para camadas de composição.
+     ------------------------------------------------------------ */
+  .md-img {
+      box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4),
+                  0 4px 8px  -2px rgba(0, 0, 0, 0.3);
+  }
+  
+  
+  /* ============================================================
+     SEÇÃO I — HINTS DE COMPOSIÇÃO
+     ------------------------------------------------------------
+     Sem will-change os efeitos acima ainda funcionam, mas o
+     browser "decide" quando promover a layer. Forçar aqui
+     evita thrashing de paint durante animações.
+     NÃO aplicar will-change em .bubble-ai (muitas instâncias =
+     muitas layers = mais RAM + compositing).
+     ============================================================ */
+  .empty-icon-glow,
+  .msg-row {
+      will-change: transform, opacity;
+  }

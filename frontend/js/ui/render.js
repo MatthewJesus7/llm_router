@@ -65,7 +65,7 @@
         avatar.className = 'avatar ' + (isUser ? 'avatar-user' : 'avatar-ai');
         avatar.innerHTML = isUser
             ? '<i class="fa-solid fa-user"></i>'
-            : '<i class="fa-solid fa-wand-magic-sparkles"></i>';
+            : '<i class="fa-solid fa-brain"></i>';
 
         // coluna de conteúdo
         const contentDiv = document.createElement('div');
@@ -123,7 +123,7 @@
             <div class="empty-icon-wrap">
                 <div class="empty-icon-glow"></div>
                 <div class="empty-icon">
-                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <i class="fa-solid fa-brain"></i>
                 </div>
             </div>
             <h2 class="empty-title">Como posso ajudar?</h2>

@@ -1,8 +1,15 @@
 // ui.js
-// Orquestração da interface: estado, eventos, composer, toast, clipboard.
-// Delega parsing para markdown.js e geração de DOM para render.js.
+// Orquestração: dono do estado, dos eventos e do fluxo. Delega transporte
+// para API, parsing para MarkdownRenderer e DOM para Renderer.
 
-let renderedCount = 0;
+// ============================================================
+// 0. ESTADO (agora explicitamente aqui, não mais em api.js)
+// ============================================================
+let messagesStore    = [];
+let currentThreadId  = crypto.randomUUID();
+let isStreaming      = false;
+let renderedCount    = 0;
+let currentAbort     = null;   // AbortController do stream em andamento
 
 const inputEl = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
@@ -37,10 +44,10 @@ function showToast(msg, type = 'err') {
 }
 
 // ============================================================
-// 2. COMPOSER / ESTADO DE STREAMING
+// 2. COMPOSER / STREAMING STATE
 // ============================================================
 function setStreamingState(v) {
-    if (typeof isStreaming !== 'undefined') isStreaming = v;
+    isStreaming = v;
     if (!sendBtn || !inputEl) return;
 
     sendBtn.disabled = v || inputEl.value.trim() === '';
@@ -62,7 +69,46 @@ function usePrompt(p) {
 }
 
 // ============================================================
-// 3. CLIPBOARD
+// 3. CONEXÃO (orquestra DOM a partir de API.fetchInfo)
+// ============================================================
+async function checkConnection() {
+    const dotEl    = document.getElementById('connection-dot');
+    const textEl   = document.getElementById('connection-text');
+    const selectEl = document.getElementById('provider-select');
+
+    if (dotEl)  dotEl.className = 'status-dot wait';
+    if (textEl) textEl.textContent = 'Conectando...';
+
+    const result = await API.fetchInfo();
+
+    if (result.ok) {
+        if (dotEl)  dotEl.className = 'status-dot ok';
+        if (textEl) textEl.textContent = 'Conectado';
+
+        if (selectEl) {
+            selectEl.innerHTML = '';
+            if (result.providers.length > 0) {
+                result.providers.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p;
+                    opt.textContent = p;
+                    selectEl.appendChild(opt);
+                });
+            } else {
+                selectEl.innerHTML = '<option value="">Padrão do sistema</option>';
+            }
+        }
+        return;
+    }
+
+    if (dotEl)  dotEl.className = 'status-dot err';
+    if (textEl) textEl.textContent = 'Desconectado';
+    showToast('Não foi possível conectar ao servidor (' + result.baseUrl + ')');
+    console.error(result.error);
+}
+
+// ============================================================
+// 4. CLIPBOARD
 // ============================================================
 function fallbackCopy(text) {
     const ta = document.createElement('textarea');
@@ -102,22 +148,21 @@ function copyMsg(id, btn) {
 }
 
 // ============================================================
-// 4. SESSÃO
+// 5. SESSÃO
 // ============================================================
 function resetSession() {
+    if (currentAbort) currentAbort.abort();   // mata stream órfão
     currentThreadId = crypto.randomUUID();
-    messagesStore = [];
-    renderedCount = 0;
+    messagesStore   = [];
+    renderedCount   = 0;
     renderMessages();
     showToast('Nova conversa iniciada', 'ok');
 }
 
 // ============================================================
-// 5. RENDER DO FEED
+// 6. RENDER DO FEED
 // ============================================================
 function renderMessages() {
-    if (typeof messagesStore === 'undefined') return;
-
     if (messagesStore.length === 0) {
         renderedCount = 0;
         chatEl.innerHTML = '';
@@ -143,7 +188,7 @@ function renderMessages() {
 }
 
 // ============================================================
-// 6. ATUALIZAÇÃO DA ÚLTIMA MENSAGEM
+// 7. ATUALIZAÇÃO DA ÚLTIMA MENSAGEM
 // ============================================================
 function scrollIfNearBottom() {
     const isNearBottom = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 120;
@@ -175,8 +220,6 @@ function updateLastMessage(content, isFinished = true) {
     const bubble = document.getElementById(`bubble-${lastMsg.id}`);
     if (!bubble) {
         renderMessages();
-    } else if (!content || content === '') {
-        bubble.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
     } else {
         Renderer.applyRichRendering(bubble, content, isFinished);
     }
@@ -185,7 +228,103 @@ function updateLastMessage(content, isFinished = true) {
 }
 
 // ============================================================
-// 7. ENVIO
+// 8. ENVIO + CONSUMO DO STREAM
+// ============================================================
+async function sendUserMessage(text) {
+    if (isStreaming) return;
+    if (!text.trim()) return;
+
+    setStreamingState(true);
+    messagesStore.push({ id: crypto.randomUUID(), type: 'human', content: text });
+    renderMessages();
+
+    const providerEl = document.getElementById('provider-select');
+    const provider   = providerEl ? providerEl.value : '';
+
+    const aiMsg = { id: crypto.randomUUID(), type: 'ai', content: '' };
+    messagesStore.push(aiMsg);
+    renderMessages();
+
+    currentAbort = new AbortController();
+
+    try {
+        const stream = API.streamRun({
+            threadId: currentThreadId,
+            provider,
+            messages: messagesStore,
+            signal: currentAbort.signal,
+        });
+
+        for await (const event of stream) {
+            handleStreamEvent(event, aiMsg);
+        }
+
+        updateLastMessage(aiMsg.content, true);
+
+    } catch (err) {
+        if (err.name === 'AbortError') return;   // reset intencional, silencioso
+
+        showToast('Erro ao enviar mensagem: ' + err.message);
+        const last = messagesStore[messagesStore.length - 1];
+        if (last && last.type === 'ai' && !last.content) {
+            messagesStore.pop();
+            renderMessages();
+        }
+    } finally {
+        currentAbort = null;
+        setStreamingState(false);
+    }
+}
+
+/**
+ * Interpreta um evento SSE já parseado pelo API e aplica no estado/UI.
+ * Aqui mora a regra de negócio — o API não sabe o que é `messages/partial`.
+ */
+// ui.js — handleStreamEvent
+
+function handleStreamEvent(event, aiMsg) {
+    const { type, data } = event;
+
+    if (type === 'messages/partial') {
+        let content = '';
+        if (Array.isArray(data) && data.length > 0) {
+            const item = data[0];
+            if (typeof item === 'string')                   content = item;
+            else if (item && item.content !== undefined)    content = item.content;
+        } else if (data && data.content !== undefined) {
+            content = data.content;
+        } else if (typeof data === 'string') {
+            content = data;
+        }
+
+        if (content) {
+            aiMsg.content = content;
+            updateLastMessageFast(content);
+        }
+        return;
+    }
+
+    if (type === 'values') {
+        // O `values` traz a thread COMPLETA do servidor. NÃO substituir o store
+        // local (IDs diferentes + mensagens antigas). Apenas sincronizar o
+        // conteúdo final da IA que está em progresso.
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+            const latest = data.messages[data.messages.length - 1];
+            if (latest && latest.type !== 'human' && latest.content !== undefined) {
+                aiMsg.content = latest.content;
+                updateLastMessage(latest.content, false);
+            }
+        }
+        return;
+    }
+
+    if (type === 'error') {
+        showToast('Erro: ' + (data.error || JSON.stringify(data)));
+    }
+}
+
+// ============================================================
+// 9. HANDLER DO FORM
 // ============================================================
 function handleSendMessage(event) {
     event.preventDefault();
@@ -194,25 +333,21 @@ function handleSendMessage(event) {
 
     inputEl.value = '';
     inputEl.style.height = 'auto';
-
-    if (typeof sendUserMessage === 'function') {
-        sendUserMessage(text);
-    }
+    sendUserMessage(text);
 }
 
 // ============================================================
-// 8. BINDINGS
+// 10. BINDINGS
 // ============================================================
 if (inputEl) {
     inputEl.addEventListener('input', () => {
-        const isStreamingActive = typeof isStreaming !== 'undefined' ? isStreaming : false;
-        if (!isStreamingActive) sendBtn.disabled = inputEl.value.trim() === '';
+        if (!isStreaming) sendBtn.disabled = inputEl.value.trim() === '';
     });
 }
 
 window.onload = () => {
     renderMessages();
-    if (typeof checkConnection === 'function') checkConnection();
+    checkConnection();
 
     const chatForm = document.getElementById('chat-form');
     if (chatForm) chatForm.addEventListener('submit', handleSendMessage);
