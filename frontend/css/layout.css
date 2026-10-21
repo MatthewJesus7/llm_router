@@ -1,154 +1,159 @@
 /* ============================================================
-   BASE.CSS — Layout enxuto
-   Efeitos caros movidos para greater_css.css
+   LAYOUT.CSS — Estrutura da tela (sidebar compacta + shell principal)
+   ------------------------------------------------------------
+   Regras defensivas: propriedades estruturais críticas da sidebar
+   usam seletores de maior especificidade (body > aside.sidebar)
+   para não serem sobrescritas por base.css / components.css.
    ============================================================ */
 
-/* ============================================================
-   1. FUNDO DECORATIVO (AURORA)
-   ============================================================ */
-/* O gradiente radial + filter: blur(60px) + opacity
-   foram movidos → greater_css.css (efeito caro) */
-   .aurora {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    transform: translateZ(0); /* Aceleração de hardware */
+/* ------------------------------------------------------------
+   1. TOKENS DE LAYOUT
+   ------------------------------------------------------------ */
+   :root {
+    --sidebar-width:            68px;
+    --sidebar-padding:          1rem 0.5rem;
+    --new-chat-size:            40px;
+    --new-chat-radius:          0.75rem;
+    --composer-max-width:       768px;
+
+    --surface-sidebar:          rgba(9, 9, 11, 0.95);
+    --surface-btn:              rgba(255, 255, 255, 0.05);
+    --surface-btn-hover:        rgba(255, 255, 255, 0.09);
+
+    --border-sidebar:           rgba(255, 255, 255, 0.08);
+    --border-sidebar-subtle:    rgba(255, 255, 255, 0.05);
+    --border-btn-hover:         rgba(255, 255, 255, 0.15);
+
+    --text-default:             #f4f4f5;
 }
 
-/* ============================================================
-   2. CONTAINER PRINCIPAL (FLEXBOX ESTÁVEL)
-   ============================================================ */
-main {
-    position: relative;
-    z-index: 10;
-    flex: 1;
+/* ------------------------------------------------------------
+   2. SHELL DO APP
+   ------------------------------------------------------------ */
+body {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;          /* força sidebar à esquerda, não em cima */
+    height: 100vh;
+    margin: 0;
     overflow: hidden;
     background-color: var(--bg, #09090b);
-    isolation: isolate;
+    color: var(--text-default);
+    font-family: inherit;
 }
 
-/* ============================================================
-   3. HEADER
-   ============================================================ */
-/* backdrop-filter + box-shadow do header → greater_css.css */
-.header {
-    position: relative;
-    z-index: 20;
-    flex-shrink: 0;
-    padding: 0.875rem 1.25rem;
+/* ------------------------------------------------------------
+   3. SIDEBAR COMPACTA (APENAS ÍCONES)
+   ------------------------------------------------------------
+   Seletor com especificidade elevada (body > aside.sidebar)
+   para vencer resets genéricos como `aside { ... }`.
+   ------------------------------------------------------------ */
+body > aside.sidebar {
+    /* Posicionamento no flex do body */
+    flex: 0 0 var(--sidebar-width);
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+    max-width: var(--sidebar-width);
+    height: 100vh;                /* garante altura total mesmo se virar linha */
+    align-self: stretch;
+
+    /* Layout interno */
     display: flex;
-    align-items: center;
+    flex-direction: column;
     justify-content: space-between;
-    background: rgba(9, 9, 11, 0.75);
-    border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+    align-items: center;
+    padding: var(--sidebar-padding);
+    box-sizing: border-box;
+
+    /* Aparência */
+    background: var(--surface-sidebar);
+    border-right: 1px solid var(--border-sidebar);
+    border-bottom: none;
+    z-index: 30;
 }
 
-@media (min-width: 640px) {
-    .header { 
-        padding-left: 2rem; 
-        padding-right: 2rem; 
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-    }
+body > aside.sidebar .sidebar-top {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
 }
 
-.header-brand   { display: flex; align-items: center; gap: 0.875rem; }
-.header-actions { display: flex; align-items: center; gap: 0.75rem; }
-
-/* — Logo da Marca (squircle) — */
-/* box-shadow dupla → greater_css.css */
-.brand-logo {
-    width: 2.375rem; 
-    height: 2.375rem;
-    border-radius: 0.875rem;
-    background: var(--grad, linear-gradient(135deg, #4f46e5 0%, #d946ef 100%));
-    display: flex; 
-    align-items: center; 
+body > aside.sidebar .sidebar-bottom {
+    display: flex;
+    align-items: center;
     justify-content: center;
-    position: relative;
+    width: 100%;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--border-sidebar-subtle);
 }
 
-.brand-logo::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    pointer-events: none;
-}
-
-/* filter: drop-shadow → greater_css.css */
-.brand-logo i { 
-    color: #fff; 
-    font-size: 0.9375rem; 
-}
-
-.brand-title {
-    margin: 0;
-    font-weight: 600;
-    font-size: 0.9375rem;
-    letter-spacing: -0.025em;
-    line-height: 1.2;
-    color: #f4f4f5;
-}
-
-.brand-status {
+/* Botão "nova conversa" */
+body > aside.sidebar .new-chat-icon-btn {
     display: flex;
     align-items: center;
+    justify-content: center;
+    width: var(--new-chat-size);
+    height: var(--new-chat-size);
+    background: var(--surface-btn);
+    border: 1px solid var(--border-sidebar);
+    border-radius: var(--new-chat-radius);
+    color: var(--text-default);
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+body > aside.sidebar .new-chat-icon-btn:hover {
+    background: var(--surface-btn-hover);
+    border-color: var(--border-btn-hover);
+}
+/* ------------------------------------------------------------
+   4. CONTAINER PRINCIPAL
+   ------------------------------------------------------------ */
+   body > .main-container {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100vh;
+    position: relative;
+    overflow: hidden;
+}
+
+/* O <main> ocupa o espaço entre o topo e o input fixo */
+body > .main-container > main {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;              /* permite o feed rolar sem estourar */
+}
+
+/* Feed: rola quando há mensagens, centraliza quando está vazio */
+#chat-messages {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+/* Centraliza o empty-state */
+#chat-messages > .empty-state {
+    margin: auto;               /* truque: centraliza no eixo vertical */
+    max-width: var(--composer-max-width);
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   5. COMPOSITOR (barra unificada: seletor + textarea + enviar)
+   ------------------------------------------------------------ */
+.composer-wrapper {
+    display: flex;
+    flex-direction: column;
     gap: 0.5rem;
-    margin-top: 0.25rem;
+    width: 100%;
+    max-width: var(--composer-max-width);
+    margin: 20px auto;
 }
 
-/* — Indicador de Conexão — */
-#connection-text {
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: #a1a1aa;
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-}
-
-/* box-shadow de glow no ponto → greater_css.css */
-#connection-text::before {
-    content: '';
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: #10b981;
-}
-
-/* ============================================================
-   4. ÁREA DE INPUT & GRADIENTE DE TRANSIÇÃO (FADE)
-   ============================================================ */
-.input-area {
-    position: relative;
-    z-index: 20;
-    flex-shrink: 0;
-    padding: 0.5rem 1.25rem 1.25rem;
-    background: transparent;
-}
-
-@media (min-width: 640px) {
-    .input-area {
-        padding-left: 2rem;
-        padding-right: 2rem;
-        padding-bottom: 1.75rem;
-    }
-}
-
-/* O .fade-bottom ficou no base: linear-gradient estático
-   de 64px é barato. Se virar ofensor, mover ao greater. */
-.fade-bottom {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 100%;
-    height: 64px;
-    background: linear-gradient(to top, var(--bg, #09090b) 0%, transparent 100%);
-    pointer-events: none;
-    z-index: 10;
-}
+/* A toolbar antiga (pill flutuando acima) foi removida —
+   o seletor agora vive dentro do .composer. */

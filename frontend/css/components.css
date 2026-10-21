@@ -1,9 +1,43 @@
 /* ============================================================
-   1. INDICADOR DE STATUS
+   COMPONENTS.CSS — Componentes reutilizáveis
+   ------------------------------------------------------------
+   Ordem:
+     1. Tokens de componente
+     2. Indicador de status
+     3. Ícone / botão de ícone (base única)
+     4. Chip (sugestão)
+     5. Composer unificado (seletor + textarea + enviar)
+     6. Copy button
+     7. Toast
    ============================================================ */
-   .status-dot {
+
+/* ------------------------------------------------------------
+   1. TOKENS DE COMPONENTE
+   ------------------------------------------------------------ */
+   :root {
+    --control-h:        36px;      /* altura padrão de controles */
+    --control-radius:   10px;
+    --control-radius-lg:18px;      /* composer */
+    --gap-xs:           6px;
+    --gap-sm:           8px;
+    --gap-md:           12px;
+
+    --text-muted:       #a1a1aa;
+    --text-dim:         #71717a;
+    --text-faint:       #52525b;
+    --text-strong:      #e4e4e7;
+    --text-accent:      #a5b4fc;
+
+    --composer-bg:      #121217;
+}
+
+/* ------------------------------------------------------------
+   2. INDICADOR DE STATUS
+   ------------------------------------------------------------ */
+.status-dot {
     display: inline-block;
-    width: 8px; height: 8px;
+    width: 8px;
+    height: 8px;
     border-radius: 99px;
     flex-shrink: 0;
     background: #71717a;
@@ -12,55 +46,25 @@
 .status-dot.ok   { background: #34d399; }
 .status-dot.err  { background: #f87171; }
 
-/* ============================================================
-   2. PILL / PROVIDER SELECT
-   ============================================================ */
-.pill {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    border-radius: 8px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-}
-.pill i.microchip { font-size: 11px; color: #a5b4fc; }
-.pill i.chevron   { font-size: 9px;  color: #71717a; }
-
-#provider-select {
-    background: transparent;
-    border: none;
-    outline: none;
-    font-size: 12px;
-    font-weight: 500;
-    color: #e4e4e7;
-    appearance: none;
-    -webkit-appearance: none;
-    cursor: pointer;
-}
-#provider-select option {
-    background: var(--surface);
-    color: #e4e4e7;
-}
-
-.pill-wrapper { display: none; }
-@media (min-width: 640px) {
-    .pill-wrapper { display: flex; }
-}
-
-/* ============================================================
-   3. ICON BUTTON
-   ============================================================ */
+/* ------------------------------------------------------------
+   3. BOTÃO DE ÍCONE (BASE ÚNICA)
+   ------------------------------------------------------------
+   Um único conjunto de regras para TODOS os botões quadrados
+   de ícone (nova conversa, etc.). O layout.css só ajusta
+   tamanho via variável --control-h se quiser diferente.
+   ------------------------------------------------------------ */
 .icon-btn {
-    width: 36px; height: 36px;
-    border-radius: 8px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: #a1a1aa;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: var(--control-h);
+    height: var(--control-h);
+    border-radius: var(--control-radius);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
     cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s, transform .2s;
 }
 .icon-btn:hover {
     color: #fff;
@@ -73,49 +77,101 @@
 }
 .icon-btn:hover i { transform: rotate(180deg); }
 
-/* ============================================================
-   4. CHIP (botão de sugestão)
-   ============================================================ */
+/* Exceção: o botão de nova conversa NÃO gira ao passar o mouse */
+.new-chat-icon-btn:hover i { transform: none; }
+
+/* ------------------------------------------------------------
+   4. CHIP (sugestão)
+   ------------------------------------------------------------ */
 .chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--gap-xs);
     padding: 8px 12px;
     border-radius: 99px;
     background: var(--surface);
     border: 1px solid var(--border);
-    color: #a1a1aa;
+    color: var(--text-muted);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
 }
 .chip:hover {
     color: #fff;
     border-color: var(--accent);
     background: var(--border);
 }
-.chip i { font-size: 11px; color: #a5b4fc; }
+.chip i {
+    font-size: 11px;
+    color: var(--text-accent);
+}
 
-/* ============================================================
-   5. COMPOSER (form de envio)
-   ============================================================ */
+/* ------------------------------------------------------------
+   5. COMPOSER UNIFICADO
+   ------------------------------------------------------------
+   Um único container arredondado que agrupa:
+     [ seletor de modelo ]  [ textarea ]  [ botão enviar ]
+   O seletor de modelo NÃO é mais um pill separado flutuando
+   acima do input — ele vive DENTRO da barra do composer.
+   ------------------------------------------------------------ */
 .composer {
     position: relative;
     display: flex;
-    align-items: center;
-    max-width: 48rem;
-    margin: 0 auto;
-    background: #121217;
+    align-items: flex-end;          /* alinha seletor/enviar à base quando textarea cresce */
+    gap: var(--gap-sm);
+    padding: 6px;
+    background: var(--composer-bg);
     border: 1px solid var(--border);
-    border-radius: 18px;
+    border-radius: var(--control-radius-lg);
+    transition: border-color .15s;
 }
 .composer:focus-within {
-    border-color: rgba(129,140,248,.5);
+    border-color: rgba(129, 140, 248, .5);
 }
 
-#user-input {
+/* --- Seletor de modelo (dentro do composer) --- */
+.composer .provider-select-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    height: var(--control-h);
+    padding: 0 10px 0 8px;
+    border-radius: var(--control-radius);
+}
+.composer .provider-select-wrap i.microchip {
+    font-size: 11px;
+    color: var(--text-accent);
+}
+.composer .provider-select-wrap i.chevron {
+    font-size: 9px;
+    color: var(--text-dim);
+    pointer-events: none;
+}
+.composer #provider-select {
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-strong);
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    padding-right: 2px;
+    max-width: 160px;
+}
+.composer #provider-select option {
+    background: var(--surface);
+    color: var(--text-strong);
+}
+
+/* --- Textarea --- */
+.composer #user-input {
     flex: 1;
-    width: 100%;
+    min-width: 0;
     background: transparent;
     border: none;
     outline: none;
@@ -125,16 +181,16 @@
     font-size: 14px;
     line-height: 1.5;
     max-height: 150px;
-    padding: 12px 48px 12px 14px;
+    padding: 8px 4px;
 }
-#user-input::placeholder { color: #52525b; }
+.composer #user-input::placeholder { color: var(--text-faint); }
 
-.send-btn {
-    position: absolute;
-    right: 0.5rem;
-    bottom: 0.5rem;
-    width: 2.25rem; height: 2.25rem;
-    border-radius: 10px;
+/* --- Botão enviar --- */
+.composer .send-btn {
+    flex-shrink: 0;
+    width: var(--control-h);
+    height: var(--control-h);
+    border-radius: var(--control-radius);
     background: var(--grad);
     border: none;
     color: #fff;
@@ -142,32 +198,33 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    transition: transform .15s, background .15s;
 }
-.send-btn:disabled {
+.composer .send-btn:disabled {
     background: var(--border);
-    color: #52525b;
+    color: var(--text-faint);
     cursor: default;
 }
-.send-btn:not(:disabled):hover { transform: translateY(-1px); }
-.send-btn i { font-size: 0.75rem; }
+.composer .send-btn:not(:disabled):hover { transform: translateY(-1px); }
+.composer .send-btn i { font-size: 0.75rem; }
 
+/* --- Texto de ajuda abaixo do composer --- */
 .help-text {
-    position: relative;
     text-align: center;
     margin: 0.625rem 0 0;
     font-size: 11px;
-    color: #52525b;
+    color: var(--text-faint);
 }
 
-/* ============================================================
-   6. COPY BUTTON (base)
-   ============================================================ */
+/* ------------------------------------------------------------
+   6. COPY BUTTON
+   ------------------------------------------------------------ */
 .copy-btn {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     font-size: 11px;
-    color: #71717a;
+    color: var(--text-dim);
     background: none;
     border: none;
     padding: 2px 6px;
@@ -175,9 +232,9 @@
     cursor: pointer;
 }
 
-/* ============================================================
+/* ------------------------------------------------------------
    7. TOAST
-   ============================================================ */
+   ------------------------------------------------------------ */
 #toast {
     position: fixed;
     top: 16px;

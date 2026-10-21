@@ -15,85 +15,87 @@
     <link rel="stylesheet" href="css/layout.css">
     <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="css/content.css">
+</head>
 <body>
 
     <div class="aurora"></div>
     <div id="toast"></div>
 
-    <!-- HEADER -->
-    <header class="header">
-        <div class="header-brand">
-            <div class="brand-logo">
-                <i class="fa-solid fa-brain"></i>
-            </div>
-            <div>
-                <h1 class="brand-title">Assistente IA</h1>
-                <div class="brand-status">
-                    <span id="connection-dot" class="status-dot wait"></span>
-                    <span id="connection-text">Conectando...</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="header-actions">
-            <div class="pill-wrapper pill">
-                <i class="fa-solid fa-microchip microchip"></i>
-                <select id="provider-select">
-                    <option value="">Carregando...</option>
-                </select>
-                <i class="fa-solid fa-chevron-down chevron"></i>
-            </div>
-            <button onclick="resetSession()" title="Nova conversa" class="icon-btn">
-                <i class="fa-solid fa-rotate-right"></i>
+    <!-- BARRA LATERAL (Compacta / Apenas Ícones) -->
+    <aside class="sidebar">
+        <div class="sidebar-top">
+            <button onclick="resetSession()" title="Nova conversa" class="icon-btn new-chat-icon-btn">
+                <i class="fa-solid fa-plus"></i>
             </button>
         </div>
-    </header>
-
-    <!-- ÁREA PRINCIPAL -->
-    <main>
-
-        <!-- FEED DE MENSAGENS -->
-        <div id="chat-messages" class="custom-scrollbar">
-            <div class="empty-state fade-in">
-                <div class="empty-icon-wrap">
-                    <div class="empty-icon-glow"></div>
-                    <div class="empty-icon">
-                        <i class="fa-solid fa-brain"></i>
-                    </div>
-                </div>
-                <h2 class="empty-title">Como posso ajudar?</h2>
-                <p class="empty-subtitle">
-                    Envie uma mensagem para conversar com o modelo configurado no seu backend.
-                </p>
-                <div class="chips">
-                    <button class="chip" data-p="Explique de forma simples como funciona uma rede neural." onclick="usePrompt(this.dataset.p)">
-                        <i class="fa-solid fa-brain"></i>Explicar um conceito
-                    </button>
-                    <button class="chip" data-p="Me ajude a escrever um e-mail profissional e objetivo." onclick="usePrompt(this.dataset.p)">
-                        <i class="fa-solid fa-paper-plane"></i>Escrever um e-mail
-                    </button>
-                    <button class="chip" data-p="Faça um brainstorm com 10 ideias criativas para um projeto pessoal." onclick="usePrompt(this.dataset.p)">
-                        <i class="fa-solid fa-lightbulb"></i>Brainstorm de ideias
-                    </button>
-                </div>
+        <div class="sidebar-bottom">
+            <div class="brand-status" title="Conectado">
+                <span id="connection-dot" class="status-dot wait"></span>
             </div>
         </div>
+    </aside>
 
-        <!-- INPUT FIXO NA BASE -->
-        <div class="input-area">
-            <div class="fade-bottom"></div>
-            <form id="chat-form" class="composer">
-                <textarea id="user-input" rows="1" placeholder="Envie uma mensagem..." class="custom-scrollbar"
-                    onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.getElementById('chat-form').requestSubmit(); }"
-                    oninput="autoResize(this)"></textarea>
-                <button type="submit" id="send-btn" disabled class="send-btn">
-                    <i class="fa-solid fa-arrow-up"></i>
-                </button>
-            </form>
-            <p class="help-text"><kbd>Enter</kbd> enviar &nbsp;·&nbsp; <kbd>Shift</kbd> + <kbd>Enter</kbd> nova linha</p>
-        </div>
-    </main>
+    <!-- ÁREA PRINCIPAL -->
+    <div class="main-container">
+        <main>
+            <!-- FEED DE MENSAGENS -->
+            <div id="chat-messages" class="custom-scrollbar">
+                <div class="empty-state fade-in">
+                    <div class="empty-icon-wrap">
+                        <div class="empty-icon-glow"></div>
+                        <div class="empty-icon">
+                            <i class="fa-solid fa-brain"></i>
+                        </div>
+                    </div>
+                    <h2 class="empty-title">Como posso ajudar?</h2>
+                    <p class="empty-subtitle">
+                        Envie uma mensagem para conversar com o modelo configurado no seu backend.
+                    </p>
+                    <div class="chips">
+                        <button class="chip" data-p="Explique de forma simples como funciona uma rede neural." onclick="usePrompt(this.dataset.p)">
+                            <i class="fa-solid fa-brain"></i>Explicar um conceito
+                        </button>
+                        <button class="chip" data-p="Me ajude a escrever um e-mail profissional e objetivo." onclick="usePrompt(this.dataset.p)">
+                            <i class="fa-solid fa-paper-plane"></i>Escrever um e-mail
+                        </button>
+                        <button class="chip" data-p="Faça um brainstorm com 10 ideias criativas para um projeto pessoal." onclick="usePrompt(this.dataset.p)">
+                            <i class="fa-solid fa-lightbulb"></i>Brainstorm de ideias
+                        </button>
+                    </div>
+                </div>
+            </div>
 
+            <!-- INPUT FIXO NA BASE COM SELETOR DE MODELO UNIFICADO -->
+            <div class="input-area">
+                <div class="fade-bottom"></div>
+                <div class="composer-wrapper">
+                    <form id="chat-form" class="composer">
+                        <!-- Textarea primeiro -->
+                        <textarea id="user-input" rows="1" placeholder="Envie uma mensagem..."
+                            class="custom-scrollbar"
+                            onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.getElementById('chat-form').requestSubmit(); }"
+                            oninput="autoResize(this)"></textarea>
+                    
+                        <!-- Seletor discreto à direita -->
+                        <div class="provider-select-wrap">
+                            <i class="fa-solid fa-microchip microchip"></i>
+                            <select id="provider-select" aria-label="Modelo">
+                                <option value="">Carregando...</option>
+                            </select>
+                            <i class="fa-solid fa-chevron-down chevron"></i>
+                        </div>
+                    
+                        <!-- Enviar por último -->
+                        <button type="submit" id="send-btn" disabled class="send-btn">
+                            <i class="fa-solid fa-arrow-up"></i>
+                        </button>
+                    </form>
+
+                    <p class="help-text">
+                        <kbd>Enter</kbd> enviar &nbsp;·&nbsp; <kbd>Shift</kbd> + <kbd>Enter</kbd> nova linha
+                    </p>
+                </div>
+            </div>
     <!-- ordem importa -->
     <script src="js/api.js"></script>
     <script src="js/ui/markdown.js"></script>
