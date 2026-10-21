@@ -1,4 +1,4 @@
-# core.py
+# ai_core.py
 # ─────────────────────────────────────────────────────────────
 # Motor do roteador — não precisa mexer aqui
 # Contém a lógica de rate limit, fallback e seleção de providers

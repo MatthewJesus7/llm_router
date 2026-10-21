@@ -42,6 +42,21 @@ PROVIDERS_CONFIG = [
         "endpoint": "https://openrouter.ai/api/v1/chat/completions",
         "multimodels": True,
         "models": [
+            "thinkingmachines/inkling",
+            "thinkingmachines/inkling-small",
+            "nvidia/nemotron-3-ultra-550b-a55b",
+            "nvidia/nemotron-3.5-lightning",
+            "nvidia/nemotron-3.5-super-vl",
+            "nvidia/nemotron-3-super-120b-a12b",
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+            "google/gemma-4-31b-it",
+            "google/gemma-4-26b-a4b-it",
+            "dots-studio/dots-3-note-preview",
+            "poolside/laguna-s-2.1",
+            "poolside/laguna-xs-2.1",
+            "cohere/north-mini-code",
+            "xingchen-agi/xing4.0-29b-a4b",
+            "liquid/lfm-2.5-2.6b",
             "google/gemma-4-26b-a4b-it",
             "deepseek/deepseek-chat"
         ],
@@ -53,7 +68,6 @@ PROVIDERS_CONFIG = [
         "timeout_default": 60,
     }
 ]
-
 
 def _build_provider_instance(cfg: Dict[str, Any]) -> List[AIProvider]:
     api_key_env = cfg["api_key_env"]
