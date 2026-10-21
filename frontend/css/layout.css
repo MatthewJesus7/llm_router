@@ -1,28 +1,36 @@
 /* ============================================================
-   LAYOUT.CSS — Estrutura da tela (sidebar compacta + shell principal)
+   LAYOUT.CSS — Estrutura da tela (sidebar + shell principal)
    ------------------------------------------------------------
-   Regras defensivas: propriedades estruturais críticas da sidebar
-   usam seletores de maior especificidade (body > aside.sidebar)
-   para não serem sobrescritas por base.css / components.css.
+   Responsabilidades deste arquivo:
+     • Grid/flex estrutural da página
+     • Posicionamento e empilhamento vertical da sidebar
+     • Fluxo de altura do <main> (feed rolável + input fixo)
+   Aparência de controles (cor, borda, radius) fica em components.css.
    ============================================================ */
 
 /* ------------------------------------------------------------
    1. TOKENS DE LAYOUT
    ------------------------------------------------------------ */
    :root {
+    /* Sidebar */
     --sidebar-width:            68px;
-    --sidebar-padding:          1rem 0.5rem;
-    --new-chat-size:            40px;
-    --new-chat-radius:          0.75rem;
+    --sidebar-padding-y:        1rem;
+    --sidebar-padding-x:        0.5rem;
+    --sidebar-gap:              0.75rem;   /* espaço entre ícones empilhados */
+
+    /* Controles (tamanho é layout; cor/borda é components) */
+    --control-size:             40px;
+    --control-radius:           0.75rem;
+    --control-radius-sm:        8px;
+
+    /* Compositor */
     --composer-max-width:       768px;
+    --composer-gap:             0.5rem;
 
+    /* Superfícies estruturais */
     --surface-sidebar:          rgba(9, 9, 11, 0.95);
-    --surface-btn:              rgba(255, 255, 255, 0.05);
-    --surface-btn-hover:        rgba(255, 255, 255, 0.09);
-
     --border-sidebar:           rgba(255, 255, 255, 0.08);
     --border-sidebar-subtle:    rgba(255, 255, 255, 0.05);
-    --border-btn-hover:         rgba(255, 255, 255, 0.15);
 
     --text-default:             #f4f4f5;
 }
@@ -32,7 +40,7 @@
    ------------------------------------------------------------ */
 body {
     display: flex;
-    flex-direction: row;          /* força sidebar à esquerda, não em cima */
+    flex-direction: row;
     height: 100vh;
     margin: 0;
     overflow: hidden;
@@ -42,10 +50,17 @@ body {
 }
 
 /* ------------------------------------------------------------
-   3. SIDEBAR COMPACTA (APENAS ÍCONES)
+   3. SIDEBAR COMPACTA — ESTRUTURA VERTICAL
    ------------------------------------------------------------
-   Seletor com especificidade elevada (body > aside.sidebar)
-   para vencer resets genéricos como `aside { ... }`.
+   A sidebar é uma coluna com 3 faixas verticais:
+        ┌──────────────┐
+        │ sidebar-top  │  ← stack vertical (novo chat, brand)
+        │              │
+        │   (flex:1)   │  ← espaço elástico
+        │              │
+        │ sidebar-     │  ← stack vertical (user, status)
+        │ bottom       │
+        └──────────────┘
    ------------------------------------------------------------ */
 body > aside.sidebar {
     /* Posicionamento no flex do body */
@@ -53,64 +68,77 @@ body > aside.sidebar {
     width: var(--sidebar-width);
     min-width: var(--sidebar-width);
     max-width: var(--sidebar-width);
-    height: 100vh;                /* garante altura total mesmo se virar linha */
+    height: 100vh;
     align-self: stretch;
 
-    /* Layout interno */
+    /* Coluna vertical com 3 zonas */
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     align-items: center;
-    padding: var(--sidebar-padding);
+    padding: var(--sidebar-padding-y) var(--sidebar-padding-x);
     box-sizing: border-box;
 
-    /* Aparência */
+    /* Aparência estrutural */
     background: var(--surface-sidebar);
     border-right: 1px solid var(--border-sidebar);
     border-bottom: none;
     z-index: 30;
 }
 
+/* --- 3.1 Topo: pilha vertical de ícones --- */
 body > aside.sidebar .sidebar-top {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: flex-start;
+    gap: var(--sidebar-gap);
     width: 100%;
 }
 
+/* --- 3.2 Base: pilha vertical de ícones --- */
 body > aside.sidebar .sidebar-bottom {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-end;
+    gap: var(--sidebar-gap);
     width: 100%;
-    padding: 0.5rem 0;
+    padding-top: 0.5rem;
     border-top: 1px solid var(--border-sidebar-subtle);
 }
 
-/* Botão "nova conversa" */
-body > aside.sidebar .new-chat-icon-btn {
+/* --- 3.3 Botões/ícones da sidebar (tamanho) ---
+   Cor, borda e hover ficam em components.css (.icon-btn) */
+body > aside.sidebar .new-chat-icon-btn,
+body > aside.sidebar .brand-icon,
+body > aside.sidebar .user-icon {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: var(--new-chat-size);
-    height: var(--new-chat-size);
-    background: var(--surface-btn);
-    border: 1px solid var(--border-sidebar);
-    border-radius: var(--new-chat-radius);
-    color: var(--text-default);
-    font-size: 0.95rem;
-    cursor: pointer;
-    transition: background 0.2s, border-color 0.2s;
+    width: var(--control-size);
+    height: var(--control-size);
+    border-radius: var(--control-radius);
+    flex-shrink: 0;
+    box-sizing: border-box;
 }
 
-body > aside.sidebar .new-chat-icon-btn:hover {
-    background: var(--surface-btn-hover);
-    border-color: var(--border-btn-hover);
+body > aside.sidebar .brand-icon,
+body > aside.sidebar .user-icon {
+    color: var(--text-default);
+    font-size: 1rem;
+    opacity: 0.85;
 }
+
+body > aside.sidebar .status-dot {
+    width: 8px;
+    height: 8px;
+}
+
 /* ------------------------------------------------------------
    4. CONTAINER PRINCIPAL
    ------------------------------------------------------------ */
-   body > .main-container {
+body > .main-container {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
@@ -120,15 +148,14 @@ body > aside.sidebar .new-chat-icon-btn:hover {
     overflow: hidden;
 }
 
-/* O <main> ocupa o espaço entre o topo e o input fixo */
 body > .main-container > main {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    min-height: 0;              /* permite o feed rolar sem estourar */
+    min-height: 0;
 }
 
-/* Feed: rola quando há mensagens, centraliza quando está vazio */
+/* Feed: rola quando há mensagens, centraliza quando vazio */
 #chat-messages {
     flex: 1 1 auto;
     min-height: 0;
@@ -136,24 +163,59 @@ body > .main-container > main {
     display: flex;
     flex-direction: column;
 }
-/* Centraliza o empty-state */
+
 #chat-messages > .empty-state {
-    margin: auto;               /* truque: centraliza no eixo vertical */
+    margin: auto;
     max-width: var(--composer-max-width);
     width: 100%;
 }
 
 /* ------------------------------------------------------------
-   5. COMPOSITOR (barra unificada: seletor + textarea + enviar)
+   5. COMPOSITOR — ESTRUTURA
+   ------------------------------------------------------------
+   O visual do .composer (fundo, borda, radius) fica em
+   components.css. Aqui só garantimos o fluxo e o alinhamento.
    ------------------------------------------------------------ */
 .composer-wrapper {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--composer-gap);
     width: 100%;
     max-width: var(--composer-max-width);
     margin: 20px auto;
 }
 
-/* A toolbar antiga (pill flutuando acima) foi removida —
-   o seletor agora vive dentro do .composer. */
+.composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+}
+
+.composer .provider-select-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    height: var(--control-size);
+    border-radius: var(--control-radius-sm);
+}
+
+.composer .send-btn {
+    flex-shrink: 0;
+    width: var(--control-size);
+    height: var(--control-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--control-radius-sm);
+}
+
+
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-size);
+    height: var(--control-size);
+    border-radius: var(--control-radius);
+}

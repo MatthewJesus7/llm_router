@@ -23,12 +23,21 @@
 
     <!-- BARRA LATERAL (Compacta / Apenas Ícones) -->
     <aside class="sidebar">
+        <!-- TOPO: ação de nova conversa + ícone da IA -->
         <div class="sidebar-top">
+            <div class="brand-icon" title="Assistente IA">
+                <i class="fa-solid fa-brain"></i>
+            </div>
             <button onclick="resetSession()" title="Nova conversa" class="icon-btn new-chat-icon-btn">
                 <i class="fa-solid fa-plus"></i>
             </button>
         </div>
+
+        <!-- BASE: ícone do usuário + status de conexão -->
         <div class="sidebar-bottom">
+            <div class="user-icon" title="Usuário">
+                <i class="fa-solid fa-user"></i>
+            </div>
             <div class="brand-status" title="Conectado">
                 <span id="connection-dot" class="status-dot wait"></span>
             </div>
@@ -41,12 +50,6 @@
             <!-- FEED DE MENSAGENS -->
             <div id="chat-messages" class="custom-scrollbar">
                 <div class="empty-state fade-in">
-                    <div class="empty-icon-wrap">
-                        <div class="empty-icon-glow"></div>
-                        <div class="empty-icon">
-                            <i class="fa-solid fa-brain"></i>
-                        </div>
-                    </div>
                     <h2 class="empty-title">Como posso ajudar?</h2>
                     <p class="empty-subtitle">
                         Envie uma mensagem para conversar com o modelo configurado no seu backend.
@@ -75,7 +78,7 @@
                             class="custom-scrollbar"
                             onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); document.getElementById('chat-form').requestSubmit(); }"
                             oninput="autoResize(this)"></textarea>
-                    
+
                         <!-- Seletor discreto à direita -->
                         <div class="provider-select-wrap">
                             <i class="fa-solid fa-microchip microchip"></i>
@@ -84,7 +87,7 @@
                             </select>
                             <i class="fa-solid fa-chevron-down chevron"></i>
                         </div>
-                    
+
                         <!-- Enviar por último -->
                         <button type="submit" id="send-btn" disabled class="send-btn">
                             <i class="fa-solid fa-arrow-up"></i>
@@ -96,6 +99,9 @@
                     </p>
                 </div>
             </div>
+        </main>
+    </div>
+
     <!-- ordem importa -->
     <script src="js/api.js"></script>
     <script src="js/ui/markdown.js"></script>

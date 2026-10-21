@@ -47,7 +47,8 @@
     }
 
     /**
-     * Cria o nó DOM de uma mensagem (avatar + bubble + ações).
+     * Cria o nó DOM de uma mensagem (bubble + ações).
+     * Avatares removidos — a identidade visual (IA/usuário) fica na sidebar.
      */
     function createMessageElement(msg, onCopy) {
         const isUser = msg.type === 'human';
@@ -60,14 +61,7 @@
         row.className = 'msg-row ' + (isUser ? 'msg-row--user' : 'msg-row--ai');
         row.dataset.id = msg.id;
 
-        // avatar
-        const avatar = document.createElement('div');
-        avatar.className = 'avatar ' + (isUser ? 'avatar-user' : 'avatar-ai');
-        avatar.innerHTML = isUser
-            ? '<i class="fa-solid fa-user"></i>'
-            : '<i class="fa-solid fa-brain"></i>';
-
-        // coluna de conteúdo
+        // coluna de conteúdo (sem avatar)
         const contentDiv = document.createElement('div');
         contentDiv.className = 'msg-content' + (isUser ? ' msg-content--user' : '');
 
@@ -100,32 +94,22 @@
             contentDiv.appendChild(actions);
         }
 
-        // ordem visual
-        if (isUser) {
-            row.appendChild(contentDiv);
-            row.appendChild(avatar);
-        } else {
-            row.appendChild(avatar);
-            row.appendChild(contentDiv);
-        }
+        // ordem visual: sem avatar, apenas o conteúdo
+        // (alinhamento esquerda/direita continua vindo de msg-row--user/--ai no CSS)
+        row.appendChild(contentDiv);
 
         return row;
     }
 
     /**
      * HTML do estado vazio (tela inicial). Recebe `onPrompt` injetado por ui.js.
+     * Ícone grande removido — o ícone da IA agora vive na sidebar.
      */
     function createEmptyStateElement(onPrompt) {
         const wrap = document.createElement('div');
         wrap.className = 'empty-state fade-in';
 
         wrap.innerHTML = `
-            <div class="empty-icon-wrap">
-                <div class="empty-icon-glow"></div>
-                <div class="empty-icon">
-                    <i class="fa-solid fa-brain"></i>
-                </div>
-            </div>
             <h2 class="empty-title">Como posso ajudar?</h2>
             <p class="empty-subtitle">Envie uma mensagem para conversar com o modelo configurado no seu backend.</p>
             <div class="chips">

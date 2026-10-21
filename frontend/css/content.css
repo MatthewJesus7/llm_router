@@ -270,7 +270,7 @@
 }
 
 .markdown-body p:last-child {
-    margin-bottom: 0;
+    margin: 0;
 }
 
 .markdown-body ul,
