@@ -91,10 +91,10 @@
 }
 
 @media (min-width: 640px) {
-    .msg-content { max-width: 80%; }
+    .msg-content { max-width: 100%; }
 }
 
-.msg-content--user { align-items: flex-end; }
+.msg-content--user { align-items: flex-end; max-width: 80%; }
 
 /* — Balões de Conversa — */
 /* box-shadow de ambos e backdrop-filter do .bubble-ai
@@ -110,15 +110,13 @@
 }
 
 .bubble-user {
-    background: var(--grad);
+    background: var(--surface);
     color: #fff;
     border-bottom-right-radius: 6px;
     white-space: pre-wrap;
 }
 
 .bubble-ai {
-    background: var(--surface);
-    border: 1px solid var(--border);
     border-bottom-left-radius: 6px;
 }
 
