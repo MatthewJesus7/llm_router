@@ -12,7 +12,6 @@
 #   • estado de job (pendente/running/succeeded/failed)
 #   • polling com deadline e backoff
 #   • webhook (correlação por job_id)
-#   • download de mídia (URL → bytes)
 # ─────────────────────────────────────────────────────────────
 
 import os
@@ -88,28 +87,12 @@ class JobStatus(str, Enum):
 
 @dataclass
 class MediaResult:
-    """Resultado de um job multimídia: URL ou bytes + mime."""
+    """Resultado de um job multimídia: URL ou bytes + mime.
+    (Eixo 14: download/save saíram do core — ver media_io.py)"""
     url: Optional[str] = None
     data: Optional[bytes] = None
     mime_type: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
-
-    def download(self, timeout: int = 120) -> bytes:
-        if self.data is not None:
-            return self.data
-        if not self.url:
-            raise ValueError("MediaResult sem URL nem bytes")
-        r = requests.get(self.url, timeout=timeout)
-        r.raise_for_status()
-        self.data = r.content
-        if not self.mime_type:
-            self.mime_type = r.headers.get("Content-Type")
-        return self.data
-
-    def save(self, path: str, timeout: int = 120) -> str:
-        with open(path, "wb") as f:
-            f.write(self.download(timeout=timeout))
-        return path
 
 
 @dataclass
@@ -131,20 +114,36 @@ class MediaJob:
 
 
 # ─────────────────────────────────────────────────────────────
-# Provider multimídia
+# Exceções do roteador (eixo 17: distinguir falha de job
+# de falha de transporte)
 # ─────────────────────────────────────────────────────────────
-#
-# Fluxos suportados (a doc descreve os três):
-#   1. Síncrono  (imagem DALL-E-like, áudio curto Whisper/TTS):
-#        submit → resposta já traz URL/base64 → job nasce SUCCEEDED.
-#   2. Assíncrono por polling (Replicate, Fal, Runway, Veo):
-#        submit → job_id → GET status → SUCCEEDED.
-#   3. Assíncrono por webhook (quando o provider suporta):
-#        submit → job_id → provider chama webhook → SUCCEEDED.
-#
-# parse_submit aceita as duas formas:
-#   • str (job_id)                          → fluxo 2 ou 3
-#   • (job_id, MediaResult)                 → fluxo 1 (ou 2 já concluído)
+
+class MediaRouterError(Exception):
+    """Base para erros do roteador multimídia."""
+
+
+class JobFailed(MediaRouterError):
+    """O provider reportou o job como FAILED/CANCELLED (não é falha de rede)."""
+    def __init__(self, job: MediaJob):
+        self.job = job
+        super().__init__(
+            f"Job {job.job_id} ({job.provider_name}) terminou como "
+            f"{job.status.value}: {job.error}"
+        )
+
+
+class PollTimeout(MediaRouterError):
+    """O polling esgotou o tempo sem chegar a estado terminal."""
+    def __init__(self, job: MediaJob, timeout: float):
+        self.job = job
+        self.timeout = timeout
+        super().__init__(
+            f"Polling do job {job.job_id} ({job.provider_name}) excedeu {timeout}s"
+        )
+
+
+# ─────────────────────────────────────────────────────────────
+# Provider multimídia
 # ─────────────────────────────────────────────────────────────
 
 SubmitParser = Callable[[requests.Response], Union[str, Tuple[str, Optional[MediaResult]]]]
@@ -165,7 +164,7 @@ class AIProvider:
     build_status_url: Optional[Callable[[str], str]] = None
     parse_status: Optional[StatusParser] = None
     poll_interval: float = 2.0
-    max_poll_timeout: float = 300.0
+    # Eixo 18: max_poll_timeout saiu daqui — agora é por job.
     max_consecutive_poll_errors: int = 5
 
     # ── webhook (fluxo 3) ──────────────────────────────────
@@ -244,8 +243,37 @@ class AIProvider:
         return requests.get(url, headers=headers, timeout=self.timeout)
 
 
+# ─────────────────────────────────────────────────────────────
+# JobStore (eixo 15: registry extraído do Manager)
+# ─────────────────────────────────────────────────────────────
+
+class JobStore:
+    """Estado de jobs em memória. Injetável; o Manager não guarda estado de job."""
+
+    def __init__(self):
+        self._jobs: Dict[str, MediaJob] = {}
+        self._lock = threading.Lock()
+
+    def put(self, job: MediaJob):
+        if not job.job_id:
+            return
+        with self._lock:
+            self._jobs[job.job_id] = job
+
+    def get(self, job_id: str) -> Optional[MediaJob]:
+        with self._lock:
+            return self._jobs.get(job_id)
+
+    def require(self, job_id: str) -> MediaJob:
+        job = self.get(job_id)
+        if not job:
+            raise MediaRouterError(f"Job '{job_id}' não encontrado no JobStore")
+        return job
+
+
 class ProviderManager:
-    def __init__(self, providers: List[AIProvider]):
+    def __init__(self, providers: List[AIProvider],
+                 job_store: Optional[JobStore] = None):
         self.providers = [p for p in providers if p.has_key()]
 
         if not self.providers:
@@ -257,9 +285,8 @@ class ProviderManager:
         self.idx = 0
         self.lock = threading.Lock()
 
-        # registry de jobs — necessário para correlacionar webhook (a doc exige)
-        self._jobs: Dict[str, MediaJob] = {}
-        self._jobs_lock = threading.Lock()
+        # Eixo 15: registry fora do Manager (injetável, default em memória)
+        self.jobs = job_store if job_store is not None else JobStore()
 
     def _next_index(self) -> int:
         with self.lock:
@@ -281,23 +308,10 @@ class ProviderManager:
         logger.error("Nenhum provider disponível")
         return None
 
-    def _register(self, job: MediaJob):
-        if not job.job_id:
-            return
-        with self._jobs_lock:
-            self._jobs[job.job_id] = job
-
     def get_job(self, job_id: str) -> Optional[MediaJob]:
-        with self._jobs_lock:
-            return self._jobs.get(job_id)
+        return self.jobs.get(job_id)
 
     def _execute(self, p: AIProvider, prompt: str, temperature: float) -> Optional[MediaJob]:
-        """
-        Executa o submit ao provider com diagnóstico detalhado de falhas.
-
-        Retorno: MediaJob em sucesso (já SUCCEEDED se o provider for síncrono,
-        senão PENDING); None em falha.
-        """
         try:
             resp = p.send(prompt, temperature)
             status = resp.status_code
@@ -325,7 +339,7 @@ class ProviderManager:
                         status=JobStatus.SUCCEEDED if immediate else JobStatus.PENDING,
                         result=immediate,
                     )
-                    self._register(job)
+                    self.jobs.put(job)
                     return job
 
                 except Exception as parse_exc:
@@ -336,7 +350,6 @@ class ProviderManager:
                     p.force_exhaust(ttl_seconds=4)
                     return None
 
-            # ── Erros HTTP (mesma política do core de texto) ──────────────
             body = resp.text
             diagnosis = _classify_http_error(status, body)
 
@@ -344,22 +357,18 @@ class ProviderManager:
                 cooldown = int(p.window_seconds / 2)
                 logger.error(f"[{p.name}] API_SIDE | {diagnosis} → cooldown {cooldown}s")
                 p.force_exhaust(ttl_seconds=cooldown)
-
             elif status in (500, 502, 503, 529):
                 logger.error(
                     f"[{p.name}] API_SIDE | {diagnosis} "
                     f"→ provável problema de infraestrutura do provider, cooldown 30s"
                 )
                 p.force_exhaust(ttl_seconds=30)
-
             elif status in (400, 422):
                 logger.error(f"[{p.name}] CODE_SIDE | {diagnosis}")
                 p.force_exhaust(ttl_seconds=4)
-
             elif status in (401, 403):
                 logger.error(f"[{p.name}] CODE_SIDE | {diagnosis} → cooldown 300s")
                 p.force_exhaust(ttl_seconds=300)
-
             else:
                 logger.error(f"[{p.name}] UNKNOWN | {diagnosis} → cooldown 4s")
                 p.force_exhaust(ttl_seconds=4)
@@ -373,19 +382,30 @@ class ProviderManager:
 
         return None
 
-    def poll(self, job: MediaJob) -> Optional[MediaResult]:
+    def poll(self, job: MediaJob, timeout: Optional[float] = None) -> MediaResult:
         """
-        Acompanha o job até estado terminal ou timeout.
-        Suporta providers assíncronos (build_status_url + parse_status).
+        Acompanha o job até estado terminal.
+
+        Eixo 17: levanta JobFailed em FAILED/CANCELLED e PollTimeout no
+        deadline, em vez de devolver None (que se confundia com falha de rede).
+
+        Eixo 18: timeout por job — default derivado do próprio job
+        (job.max_poll_timeout se existir, senão 600s).
         """
         if job.terminal:
-            return job.result if job.status == JobStatus.SUCCEEDED else None
+            if job.status == JobStatus.SUCCEEDED and job.result is not None:
+                return job.result
+            raise JobFailed(job)
 
         p = self.providers_map.get(job.provider_name.lower())
         if not p or not p.build_status_url or not p.parse_status:
-            raise RuntimeError(f"Provider '{job.provider_name}' não suporta polling")
+            raise MediaRouterError(f"Provider '{job.provider_name}' não suporta polling")
 
-        deadline = time.time() + p.max_poll_timeout
+        # Eixo 18: deadline por job, não por provider.
+        effective_timeout = timeout if timeout is not None else getattr(
+            job, "max_poll_timeout", 600.0
+        )
+        deadline = time.time() + effective_timeout
         interval = p.poll_interval
         consecutive_errors = 0
 
@@ -406,19 +426,19 @@ class ProviderManager:
                             f"Body (500 chars): {resp.text[:500]}"
                         )
                         p.force_exhaust(ttl_seconds=4)
-                        return None
+                        raise MediaRouterError(
+                            f"Parser de status falhou para job {job.job_id}"
+                        ) from parse_exc
 
                     job.status = new_status
                     job.result = result
                     job.error = error
 
                     if job.terminal:
-                        if new_status == JobStatus.SUCCEEDED:
+                        if new_status == JobStatus.SUCCEEDED and result is not None:
                             return result
-                        logger.warning(
-                            f"[{p.name}] job {job.job_id} terminal: {new_status.value} ({error})"
-                        )
-                        return None
+                        # Eixo 17: falha de job ≠ falha de transporte.
+                        raise JobFailed(job)
 
                 elif status == 429:
                     p.force_exhaust(int(p.window_seconds / 2))
@@ -432,17 +452,26 @@ class ProviderManager:
                         f"[{p.name}] poll 5xx ({consecutive_errors}/{p.max_consecutive_poll_errors})"
                     )
                     if consecutive_errors >= p.max_consecutive_poll_errors:
-                        return None
+                        p.force_exhaust(30)
+                        raise MediaRouterError(
+                            f"Polling abortado: {consecutive_errors} erros 5xx consecutivos"
+                        )
 
                 elif status in (401, 403):
                     logger.error(f"[{p.name}] poll auth error {status} — abortando")
                     p.force_exhaust(300)
-                    return None
+                    raise MediaRouterError(
+                        f"Polling abortado: auth error {status} no provider {p.name}"
+                    )
 
                 else:
                     logger.error(f"[{p.name}] poll HTTP_{status} — abortando")
-                    return None
+                    raise MediaRouterError(
+                        f"Polling abortado: HTTP_{status} no provider {p.name}"
+                    )
 
+            except MediaRouterError:
+                raise
             except Exception as exc:
                 consecutive_errors += 1
                 diagnosis = _classify_exception(exc)
@@ -452,17 +481,22 @@ class ProviderManager:
                 )
                 if consecutive_errors >= p.max_consecutive_poll_errors:
                     p.force_exhaust(30)
-                    return None
+                    raise MediaRouterError(
+                        f"Polling abortado: {consecutive_errors} erros de rede consecutivos"
+                    ) from exc
                 interval = min(interval * 1.5, 30)
 
-        logger.error(f"[{p.name}] timeout de polling ({p.max_poll_timeout}s) job {job.job_id}")
-        p.force_exhaust(60)
-        return None
+        # Eixo 17/18: timeout explícito, não None.
+        raise PollTimeout(job, effective_timeout)
 
     def handle_webhook(self, provider_name: str, payload: Dict[str, Any]) -> MediaJob:
         """
         Recebe o payload de webhook do provider e atualiza o estado do job.
-        A doc exige webhook como alternativa ao polling em providers assíncronos.
+
+        Eixo 16: não cria mais job stub. Se o job_id não for conhecido,
+        levanta MediaRouterError — indica bug de correlação e deve ser
+        tratado pelo chamador (ex.: registrar o job antes de aceitar
+        o webhook, ou enfileirar o payload).
         """
         p = self.providers_map.get(provider_name.strip().lower())
         if not p:
@@ -478,26 +512,31 @@ class ProviderManager:
             or (payload.get("data") or {}).get("id")
             or ""
         )
+        if not job_id:
+            raise MediaRouterError(
+                f"Webhook do provider '{p.name}' sem job_id — payload inválido"
+            )
 
-        with self._jobs_lock:
-            job = self._jobs.get(job_id) if job_id else None
-            if not job:
-                job = MediaJob(job_id=job_id, provider_name=p.name)
-                if job_id:
-                    self._jobs[job_id] = job
-            job.status = status
-            job.result = result
-            job.error = error
+        job = self.jobs.get(job_id)
+        if not job:
+            # Eixo 16: falha explícita em vez de stub silencioso.
+            raise MediaRouterError(
+                f"Webhook do provider '{p.name}' para job desconhecido '{job_id}' "
+                f"— registre o job antes de aceitar o webhook"
+            )
+
+        job.status = status
+        job.result = result
+        job.error = error
+        self.jobs.put(job)
 
         logger.info(f"[{p.name}] webhook: job {job_id} → {status.value}")
         return job
 
-    def ask(self, prompt: str, temperature: float = 0.7, provider_name: str = None) -> MediaJob:
-        """
-        Submete o prompt e retorna o MediaJob.
-        O retorno pode já estar SUCCEEDED (provider síncrono) ou PENDING
-        (provider assíncrono — usar poll() ou handle_webhook()).
-        """
+    def ask(self, prompt: str, temperature: float = 0.7,
+            provider_name: str = None) -> MediaJob:
+        """Submete o prompt e retorna o MediaJob.
+        Pode já vir SUCCEEDED (provider síncrono) ou PENDING (assíncrono)."""
         if provider_name:
             p = self.providers_map.get(provider_name.strip().lower())
             if not p:
@@ -521,25 +560,6 @@ class ProviderManager:
 
         logger.critical("Todos providers falharam")
         raise RuntimeError("Todos providers falharam.")
-
-    def generate(self, prompt: str, temperature: float = 0.7,
-                 provider_name: str = None) -> MediaResult:
-        """
-        Conveniência síncrona: submit + poll (quando necessário).
-        Providers síncronos retornam direto; assíncronos são polled.
-        Para fluxo por webhook, use ask() + handle_webhook().
-        """
-        job = self.ask(prompt, temperature, provider_name)
-
-        if job.terminal:
-            if job.status == JobStatus.SUCCEEDED and job.result:
-                return job.result
-            raise RuntimeError(f"Job {job.job_id} falhou: {job.error}")
-
-        result = self.poll(job)
-        if result:
-            return result
-        raise RuntimeError(f"Job {job.job_id} não concluído")
 
     def available_providers(self) -> List[str]:
         return list(self.providers_map.keys())
